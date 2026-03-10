@@ -1,4 +1,5 @@
 import GoogleProvider from "next-auth/providers/google"
+import CredentialsProvider from "next-auth/providers/credentials"
 import { NextAuthOptions } from "next-auth"
 
 export const authOptions: NextAuthOptions = {
@@ -15,6 +16,19 @@ export const authOptions: NextAuthOptions = {
         }
       }
     }),
+    CredentialsProvider({
+      name: "Dummy Login",
+      credentials: {
+        email: { label: "Email", type: "text", placeholder: "kevinhlo@gmail.com" },
+        password: { label: "Password", type: "password" }
+      },
+      async authorize(credentials) {
+        if (credentials?.email === "kevinhlo@gmail.com" && credentials?.password === "SkiCoachApp") {
+          return { id: "1", name: "Kevin H", email: "kevinhlo@gmail.com" }
+        }
+        return null
+      }
+    })
   ],
   callbacks: {
     async jwt({ token, account }) {
@@ -28,9 +42,11 @@ export const authOptions: NextAuthOptions = {
       return session
     },
     async signIn({ account, profile }) {
+      if (account?.provider === "credentials") {
+        return true
+      }
       if (account?.provider === "google") {
         const googleProfile = profile as any;
-        // Allow cardigan.org and eliott.lo@gmail.com for testing
         const allowedEmails = ["eliott.lo@gmail.com"];
         const isAllowed = googleProfile?.email_verified && (
           googleProfile?.email?.endsWith("@cardigan.org") || 
