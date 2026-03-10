@@ -3,16 +3,20 @@
 
 import React, { useState, useEffect } from 'react';
 import { useGoogleLogin, TokenResponse } from '@react-oauth/google';
+import Calendar from 'react-calendar';
+import 'react-calendar/dist/Calendar.css';
 
 interface CalendarViewProps {
-  onFolderSelect: (folderId: string) => void;
+  onDaySelect: (folderId: string, accessToken: string) => void;
+  rootFolderId: string;
 }
 
-const CalendarView: React.FC<CalendarViewProps> = ({ onFolderSelect }) => {
+const CalendarView: React.FC<CalendarViewProps> = ({ onDaySelect, rootFolderId }) => {
   const [accessToken, setAccessToken] = useState<string | null>(null);
   const [folders, setFolders] = useState<any[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [value, onChange] = useState<any>(new Date());
 
   const login = useGoogleLogin({
     onSuccess: (tokenResponse: TokenResponse) => {
@@ -30,7 +34,7 @@ const CalendarView: React.FC<CalendarViewProps> = ({ onFolderSelect }) => {
         setIsLoading(true);
         setError(null);
         try {
-          const response = await fetch("https://www.googleapis.com/drive/v3/files?q=mimeType = 'application/vnd.google-apps.folder' and 'me' in owners&fields=files(id,name)", {
+          const response = await fetch(`https://www.googleapis.com/drive/v3/files?q='${rootFolderId}' in parents and mimeType = 'application/vnd.google-apps.folder'&fields=files(id,name)`, {
             headers: {
               'Authorization': `Bearer ${accessToken}`,
             }
@@ -40,7 +44,7 @@ const CalendarView: React.FC<CalendarViewProps> = ({ onFolderSelect }) => {
           }
           const data = await response.json();
           setFolders(data.files || []);
-        } catch (err: any) {
+        } catch (err: any) => {
           setError(err.message);
         } finally {
           setIsLoading(false);
@@ -49,10 +53,32 @@ const CalendarView: React.FC<CalendarViewProps> = ({ onFolderSelect }) => {
 
       fetchFolders();
     }
-  }, [accessToken]);
+  }, [accessToken, rootFolderId]);
 
-  const handleFolderClick = (folderId: string) => {
-    onFolderSelect(folderId);
+  const tileClassName = ({ date, view }) => {
+    if (view === 'month') {
+      const folder = folders.find(f => {
+        const folderDate = new Date(f.name);
+        return date.getFullYear() === folderDate.getFullYear() &&
+               date.getMonth() === folderDate.getMonth() &&
+               date.getDate() === folderDate.getDate();
+      });
+      if (folder) {
+        return 'highlight';
+      }
+    }
+  };
+
+  const handleDateClick = (date) => {
+    const folder = folders.find(f => {
+      const folderDate = new Date(f.name);
+      return date.getFullYear() === folderDate.getFullYear() &&
+             date.getMonth() === folderDate.getMonth() &&
+             date.getDate() === folderDate.getDate();
+    });
+    if (folder && accessToken) {
+      onDaySelect(folder.id, accessToken);
+    }
   };
 
   if (!accessToken) {
@@ -67,20 +93,15 @@ const CalendarView: React.FC<CalendarViewProps> = ({ onFolderSelect }) => {
 
   return (
     <div className="my-2 p-4 border border-gray-700 rounded-lg">
-      <h3 className="text-lg font-semibold mb-2 text-white">Select Your Root Ski Folder</h3>
+      <h3 className="text-lg font-semibold mb-2 text-white">Select a Day</h3>
       {error && <p className="text-red-500 my-2">{error}</p>}
       {isLoading && <p className="text-gray-400">Loading folder list...</p>}
-      <ul className="list-none max-h-48 overflow-y-auto">
-        {folders.length > 0 ? folders.map((folder) => (
-          <li 
-            key={folder.id} 
-            onClick={() => handleFolderClick(folder.id)} 
-            className="cursor-pointer hover:bg-gray-700 p-2 rounded text-white"
-          >
-            {folder.name}
-          </li>
-        )) : !isLoading && <p className="text-gray-400">No folders found.</p>}
-      </ul>
+      <Calendar
+        onChange={onChange}
+        value={value}
+        onClickDay={handleDateClick}
+        tileClassName={tileClassName}
+      />
     </div>
   );
 };

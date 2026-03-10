@@ -2,6 +2,17 @@
 @tailwind components;
 @tailwind utilities;
 
+.react-calendar {
+  background-color: #f0f0f0;
+  border: 1px solid #ccc;
+  border-radius: 5px;
+}
+
+.highlight {
+  background-color: #e6e6fa;
+  border-radius: 50%;
+}
+
 :root {
   --foreground-rgb: 0, 0, 0;
   --background-start-rgb: 214, 219, 220;

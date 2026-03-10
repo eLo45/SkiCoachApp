@@ -5,6 +5,7 @@ import { useSession, signIn, signOut } from 'next-auth/react';
 import TimelineSync from '@/components/TimelineSync';
 import Link from 'next/link';
 import GoogleDrivePicker from '@/components/GoogleDrivePicker';
+import CalendarView from '@/components/CalendarView';
 
 function ComparePageContent() {
   // ... (all the existing state and functions from ComparePage)
@@ -32,6 +33,15 @@ function ComparePageContent() {
   // Sync points (in seconds)
   const [syncPoint1, setSyncPoint1] = useState<number | null>(null);
   const [syncPoint2, setSyncPoint2] = useState<number | null>(null);
+
+  const [accessToken, setAccessToken] = useState<string | null>(null);
+  const [selectedDayFolderId, setSelectedDayFolderId] = useState<string | null>(null);
+  const rootFolderId = "1VwYiffrhaG29uaCbb23eSJ9hV7gMzxvV";
+
+  const handleDaySelect = (folderId: string, token: string) => {
+    setSelectedDayFolderId(folderId);
+    setAccessToken(token);
+  };
 
   const handleVideoSelect = (blobUrl: string) => {
     if (!videoSrc1) {
@@ -190,7 +200,11 @@ function ComparePageContent() {
         </button>
       </div>
 
-      <GoogleDrivePicker onVideoSelect={handleVideoSelect} />
+      <div className="my-4 p-4 border border-gray-700 rounded-lg">
+        <CalendarView onDaySelect={handleDaySelect} rootFolderId={rootFolderId} />
+      </div>
+      
+      <GoogleDrivePicker onVideoSelect={handleVideoSelect} accessToken={accessToken} selectedDayFolderId={selectedDayFolderId} />
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-8">
         <div className="p-4 bg-gray-800 rounded-lg border border-gray-700">
