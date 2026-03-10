@@ -44,7 +44,7 @@ const CalendarView: React.FC<CalendarViewProps> = ({ onDaySelect, rootFolderId }
           }
           const data = await response.json();
           setFolders(data.files || []);
-        } catch (err: any) => {
+        } catch (err: any) {
           setError(err.message);
         } finally {
           setIsLoading(false);
@@ -55,9 +55,9 @@ const CalendarView: React.FC<CalendarViewProps> = ({ onDaySelect, rootFolderId }
     }
   }, [accessToken, rootFolderId]);
 
-  const tileClassName = ({ date, view }) => {
+  const tileClassName = ({ date, view }: { date: Date, view: string }) => {
     if (view === 'month') {
-      const folder = folders.find(f => {
+      const folder = folders.find((f: any) => {
         const folderDate = new Date(f.name);
         return date.getFullYear() === folderDate.getFullYear() &&
                date.getMonth() === folderDate.getMonth() &&
@@ -67,10 +67,11 @@ const CalendarView: React.FC<CalendarViewProps> = ({ onDaySelect, rootFolderId }
         return 'highlight';
       }
     }
+    return "";
   };
 
-  const handleDateClick = (date) => {
-    const folder = folders.find(f => {
+  const handleDateClick = (date: Date) => {
+    const folder = folders.find((f: any) => {
       const folderDate = new Date(f.name);
       return date.getFullYear() === folderDate.getFullYear() &&
              date.getMonth() === folderDate.getMonth() &&
