@@ -1,3 +1,9 @@
 export { default } from "next-auth/middleware"
 
-export const config = { matcher: ["/((?!api|_next/static|_next/image|favicon.ico).*)"] }
+// Protect the /compare page and other internal routes, but allow access to the homepage
+export const config = { 
+  matcher: [
+    "/compare/:path*",
+    "/api/gdrive/:path*"
+  ] 
+}
