@@ -68,18 +68,18 @@ function ComparePageContent() {
     }
   };
 
-  // Seek video when offset changes and video is paused
+  // ONLY seek when the offset slider itself moves, not when pausing/playing
   useEffect(() => {
     if (!isPlaying && video1Ref.current && duration1) {
       video1Ref.current.currentTime = duration1 * (offset1 / 100);
     }
-  }, [offset1, duration1, isPlaying]);
+  }, [offset1]); // Only depend on offset, not isPlaying
 
   useEffect(() => {
     if (!isPlaying && video2Ref.current && duration2) {
       video2Ref.current.currentTime = duration2 * (offset2 / 100);
     }
-  }, [offset2, duration2, isPlaying]);
+  }, [offset2]); // Only depend on offset, not isPlaying
 
   const handleMarkSync = (videoNumber: 1 | 2) => {
     let newSyncPoint1 = syncPoint1;
@@ -111,16 +111,13 @@ function ComparePageContent() {
         return;
     };
 
-    // Use Video 1 as the Master
     const v1Time = video1Ref.current.currentTime;
     const v1StartOffset = duration1 * (offset1 / 100);
     const v2StartOffset = duration2 * (offset2 / 100);
     
-    // Relative time in the playback (seconds since their respective start offsets)
     const relativeTime = v1Time - v1StartOffset;
     const v2TargetTime = v2StartOffset + relativeTime;
 
-    // Only sync if they drift by more than 0.05s
     if (Math.abs(video2Ref.current.currentTime - v2TargetTime) > 0.05) {
         video2Ref.current.currentTime = v2TargetTime;
     }
@@ -151,11 +148,13 @@ function ComparePageContent() {
     if (!video1Ref.current || !video2Ref.current) return;
 
     if (isPlaying) {
+      // PAUSE: Stop exactly where they are
       setIsPlaying(false);
       video1Ref.current.pause();
       video2Ref.current.pause();
       if (animationFrameId.current) cancelAnimationFrame(animationFrameId.current);
     } else {
+      // PLAY: Resume from current position
       setIsPlaying(true);
       video1Ref.current.play();
       video2Ref.current.play();
@@ -166,7 +165,7 @@ function ComparePageContent() {
   const stepFrame = (direction: 1 | -1) => {
     if (isPlaying || !video1Ref.current || !video2Ref.current) return;
     
-    const frameTime = 1 / 30; // Assuming 30fps
+    const frameTime = (1 / 30) * 2; // Jump 2 frames (approx 0.066s)
     video1Ref.current.currentTime += direction * frameTime;
     video2Ref.current.currentTime += direction * frameTime;
   };
@@ -229,7 +228,7 @@ function ComparePageContent() {
           <div className="flex justify-center gap-4">
             {!isPlaying && (
               <button onClick={() => stepFrame(-1)} className="bg-gray-700 hover:bg-gray-600 text-white font-bold py-2 px-4 rounded-lg text-lg transition-colors">
-                &larr; Prev Frame
+                &larr; -2 Frames
               </button>
             )}
             
@@ -239,7 +238,7 @@ function ComparePageContent() {
 
             {!isPlaying && (
               <button onClick={() => stepFrame(1)} className="bg-gray-700 hover:bg-gray-600 text-white font-bold py-2 px-4 rounded-lg text-lg transition-colors">
-                Next Frame &rarr;
+                +2 Frames &rarr;
               </button>
             )}
           </div>
