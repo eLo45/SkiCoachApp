@@ -287,12 +287,37 @@ export default function ComparePage() {
   if (status === 'unauthenticated') {
     return (
       <main className="flex min-h-screen flex-col items-center justify-center p-8 bg-black text-white">
-        <div className="text-center">
+        <div className="text-center w-full max-w-md">
           <h1 className="text-4xl font-bold mb-4">Access Denied</h1>
           <p className="mb-8">You must be signed in with a @cardigan.org email to view this page.</p>
-          <button onClick={() => signIn('google')} className="bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 px-6 rounded-lg text-lg">
+          
+          <button onClick={() => signIn('google')} className="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 px-6 rounded-lg text-lg mb-6">
             Sign In with Google
           </button>
+
+          <div className="relative flex py-5 items-center">
+            <div className="flex-grow border-t border-gray-700"></div>
+            <span className="flex-shrink mx-4 text-gray-500">OR DUMMY LOGIN</span>
+            <div className="flex-grow border-t border-gray-700"></div>
+          </div>
+
+          <form 
+            onSubmit={(e) => {
+              e.preventDefault();
+              const target = e.target as any;
+              signIn('credentials', {
+                email: target.email.value,
+                password: target.password.value,
+              });
+            }}
+            className="space-y-4 mt-4"
+          >
+            <input name="email" type="email" placeholder="kevinhlo@gmail.com" className="w-full p-3 rounded bg-gray-800 border border-gray-700 text-white" required />
+            <input name="password" type="password" placeholder="Password" className="w-full p-3 rounded bg-gray-800 border border-gray-700 text-white" required />
+            <button type="submit" className="w-full bg-gray-600 hover:bg-gray-700 text-white font-bold py-3 px-6 rounded-lg text-lg">
+              Sign In with Dummy Login
+            </button>
+          </form>
         </div>
       </main>
     );
