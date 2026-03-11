@@ -94,8 +94,8 @@ function ComparePageContent() {
       const v2TargetTime = s2 + relativeToSync;
 
       // Sync if drift > 0.05s
-      if (Math.abs(v2.currentTime - v2TargetTime) > 0.05) {
-        v2.currentTime = v2TargetTime;
+      if (Math.abs(video2Ref.current.currentTime - v2TargetTime) > 0.05) {
+        video2Ref.current.currentTime = v2TargetTime;
       }
     }
     
@@ -157,11 +157,11 @@ function ComparePageContent() {
     setSyncsV2([]);
   };
 
-  const stepFrame = (direction: 1 | -1) => {
+  const stepFrames = (frames: number) => {
     if (isPlaying || !video1Ref.current || !video2Ref.current) return;
-    const frameTime = (1 / 30) * 2;
-    video1Ref.current.currentTime += direction * frameTime;
-    video2Ref.current.currentTime += direction * frameTime;
+    const frameTime = (1 / 30) * frames;
+    video1Ref.current.currentTime += frameTime;
+    video2Ref.current.currentTime += frameTime;
     setCurrentTime1(video1Ref.current.currentTime);
     setCurrentTime2(video2Ref.current.currentTime);
   };
@@ -248,21 +248,31 @@ function ComparePageContent() {
       </div>
       
       <div className="w-full max-w-4xl mx-auto my-8 flex flex-col items-center gap-6">
-          <div className="flex justify-center gap-4">
+          <div className="flex flex-wrap justify-center items-center gap-2 md:gap-4">
             {!isPlaying && (
-              <button onClick={() => stepFrame(-1)} className="bg-gray-700 hover:bg-gray-600 text-white font-bold py-2 px-4 rounded-lg transition-colors">
-                &larr; -2 Frames
-              </button>
+              <>
+                <button onClick={() => stepFrames(-4)} className="bg-gray-800 hover:bg-gray-700 text-white text-sm font-bold py-2 px-3 rounded-lg border border-gray-600 transition-colors">
+                  &laquo; -4
+                </button>
+                <button onClick={() => stepFrames(-2)} className="bg-gray-700 hover:bg-gray-600 text-white text-sm font-bold py-2 px-3 rounded-lg transition-colors">
+                  &larr; -2
+                </button>
+              </>
             )}
             
-            <button onClick={handlePlayPause} className={`${isPlaying ? 'bg-orange-600 hover:bg-orange-700' : 'bg-green-600 hover:bg-green-700'} text-white font-bold py-2 px-8 rounded-lg text-xl transition-all w-40 shadow-lg`}>
+            <button onClick={handlePlayPause} className={`${isPlaying ? 'bg-orange-600 hover:bg-orange-700' : 'bg-green-600 hover:bg-green-700'} text-white font-bold py-2 px-10 rounded-lg text-xl transition-all w-44 shadow-lg`}>
                 {isPlaying ? 'Pause' : 'Play'}
             </button>
 
             {!isPlaying && (
-              <button onClick={() => stepFrame(1)} className="bg-gray-700 hover:bg-gray-600 text-white font-bold py-2 px-4 rounded-lg transition-colors">
-                +2 Frames &rarr;
-              </button>
+              <>
+                <button onClick={() => stepFrames(2)} className="bg-gray-700 hover:bg-gray-600 text-white text-sm font-bold py-2 px-3 rounded-lg transition-colors">
+                  +2 &rarr;
+                </button>
+                <button onClick={() => stepFrames(4)} className="bg-gray-800 hover:bg-gray-700 text-white text-sm font-bold py-2 px-3 rounded-lg border border-gray-600 transition-colors">
+                  +4 &raquo;
+                </button>
+              </>
             )}
           </div>
           
