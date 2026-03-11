@@ -3,7 +3,7 @@
 import React, { useState, useEffect } from 'react';
 
 interface GoogleDrivePickerProps {
-  onVideoSelect: (streamingUrl: string | null, index: 1 | 2) => void;
+  onVideoSelect: (streamingUrl: string | null, index: 1 | 2, fileName?: string) => void;
   selectedDayFolderId: string | null;
 }
 
@@ -47,7 +47,7 @@ const GoogleDrivePicker: React.FC<GoogleDrivePickerProps> = ({ onVideoSelect, se
     }
   }, [selectedDayFolderId]); // Keep onVideoSelect out to prevent infinite re-renders
 
-  const handleVideoClick = (fileId: string) => {
+  const handleVideoClick = (fileId: string, fileName: string) => {
     setWarningMsg(null);
 
     // Deselect logic
@@ -67,10 +67,10 @@ const GoogleDrivePicker: React.FC<GoogleDrivePickerProps> = ({ onVideoSelect, se
 
     if (!selectedVideo1) {
       setSelectedVideo1(fileId);
-      onVideoSelect(streamingUrl, 1);
+      onVideoSelect(streamingUrl, 1, fileName);
     } else if (!selectedVideo2) {
       setSelectedVideo2(fileId);
-      onVideoSelect(streamingUrl, 2);
+      onVideoSelect(streamingUrl, 2, fileName);
     } else {
       // Both slots full
       setWarningMsg("Both video slots are full. Deselect a video first by clicking on it again.");
@@ -112,7 +112,7 @@ const GoogleDrivePicker: React.FC<GoogleDrivePickerProps> = ({ onVideoSelect, se
             <p className="text-gray-400">No videos found for this day.</p>
         )}
 
-        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4 max-h-96 overflow-y-auto p-2">
+        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-4 max-h-96 overflow-y-auto p-2">
         {videos.map((video) => {
             const isSelected1 = selectedVideo1 === video.id;
             const isSelected2 = selectedVideo2 === video.id;
@@ -124,7 +124,7 @@ const GoogleDrivePicker: React.FC<GoogleDrivePickerProps> = ({ onVideoSelect, se
             return (
                 <div 
                     key={video.id} 
-                    onClick={() => handleVideoClick(video.id)} 
+                    onClick={() => handleVideoClick(video.id, video.name)} 
                     className={`relative cursor-pointer border-2 rounded-lg bg-gray-800 flex flex-col items-center justify-center p-2 transition-all ${borderClass}`}
                 >
                     <div className="w-full aspect-video bg-gray-900 rounded flex items-center justify-center mb-2 overflow-hidden">

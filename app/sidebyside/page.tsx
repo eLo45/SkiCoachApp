@@ -32,11 +32,11 @@ function SideBySidePageContent() {
   const [selectedDayFolderId, setSelectedDayFolderId] = useState<string | null>(null);
   const rootFolderId = "1VwYiffrhaG29uaCbb23eSJ9hV7gMzxvV";
 
-  const [stagedDriveVideo1, setStagedDriveVideo1] = useState<{id: string, name: string} | null>(null);
-  const [stagedDriveVideo2, setStagedDriveVideo2] = useState<{id: string, name: string} | null>(null);
-  
-  const [isDownloading1, setIsDownloading1] = useState(false);
-  const [isDownloading2, setIsDownloading2] = useState(false);
+  const [stagedDriveVideo1, setStagedDriveVideo1] = useState<{name: string} | null>(null);
+  const [stagedDriveVideo2, setStagedDriveVideo2] = useState<{name: string} | null>(null);
+
+  const [isVideo1Loaded, setIsVideo1Loaded] = useState(false);
+  const [isVideo2Loaded, setIsVideo2Loaded] = useState(false);
 
   // Cleanup blob URLs on unmount to prevent memory leaks
   useEffect(() => {
@@ -50,11 +50,14 @@ function SideBySidePageContent() {
     setSelectedDayFolderId(folderId);
   };
 
-  const handleVideoSelect = useCallback((streamingUrl: string | null, index: 1 | 2) => {
+  const handleVideoSelect = useCallback((streamingUrl: string | null, index: 1 | 2, fileName?: string) => {
     if (index === 1) {
+      setIsVideo1Loaded(false);
       // Clear local blobs if we are switching sources to prevent leaks
       if (videoSrc1 && videoSrc1.startsWith('blob:')) URL.revokeObjectURL(videoSrc1);
       setVideoSrc1(streamingUrl);
+      if (fileName) setStagedDriveVideo1({name: fileName});
+      else setStagedDriveVideo1(null);
       
       // Auto-load player
       if (streamingUrl) {
@@ -63,8 +66,11 @@ function SideBySidePageContent() {
           }, 50);
       }
     } else {
+      setIsVideo2Loaded(false);
       if (videoSrc2 && videoSrc2.startsWith('blob:')) URL.revokeObjectURL(videoSrc2);
       setVideoSrc2(streamingUrl);
+      if (fileName) setStagedDriveVideo2({name: fileName});
+      else setStagedDriveVideo2(null);
       
       if (streamingUrl) {
           setTimeout(() => {
@@ -74,39 +80,18 @@ function SideBySidePageContent() {
     }
   }, [videoSrc1, videoSrc2]);
 
-  const handleLoadDriveVideo = async (index: 1 | 2) => {
-      const stagedVideo = index === 1 ? stagedDriveVideo1 : stagedDriveVideo2;
-      if (!stagedVideo) return;
-
-      const setDownloading = index === 1 ? setIsDownloading1 : setIsDownloading2;
-      const setSrc = index === 1 ? setVideoSrc1 : setVideoSrc2;
-      const videoRef = index === 1 ? video1Ref : video2Ref;
-
-      // We don't download the blob anymore. We just set the source to our streaming API endpoint.
-      const streamingUrl = `/api/gdrive/download?fileId=${stagedVideo.id}`;
-      setSrc(streamingUrl);
-      
-      // Give the video element a tiny moment to register the new src, then explicitly load it
-      setTimeout(() => {
-          if (videoRef.current) {
-              videoRef.current.load();
-          }
-      }, 50);
-  };
-
   const handleFileChange = (e: ChangeEvent<HTMLInputElement>, videoNumber: 1 | 2) => {
     const file = e.target.files?.[0];
     if (file) {
       const url = URL.createObjectURL(file);
       if (videoNumber === 1) {
-        // Do not immediately revoke the old URL here as it can disrupt React's render cycle
-        // The useEffect hook will naturally clean it up when the component unmounts or src changes
+        setIsVideo1Loaded(false);
         setVideoSrc1(url);
-        // Clear staged drive video so UI knows we are using local
-        setStagedDriveVideo1(null); 
+        setStagedDriveVideo1({name: file.name}); 
       } else {
+        setIsVideo2Loaded(false);
         setVideoSrc2(url);
-        setStagedDriveVideo2(null);
+        setStagedDriveVideo2({name: file.name});
       }
     }
   };
@@ -121,10 +106,13 @@ function SideBySidePageContent() {
 
   // Sync Logic: Dual-Offset Piecewise Synchronization
   const syncTime = useCallback(() => {
-    if (!isPlaying || !video1Ref.current || !video2Ref.current) return;
+    if (!video1Ref.current || !video2Ref.current) return;
 
     const v1 = video1Ref.current;
     const v2 = video2Ref.current;
+    
+    // Check native paused state instead of React state to avoid closure staleness
+    if (v1.paused && v2.paused) return;
     
     setCurrentTime1(v1.currentTime);
     setCurrentTime2(v2.currentTime);
@@ -158,7 +146,7 @@ function SideBySidePageContent() {
     }
 
     animationFrameId.current = requestAnimationFrame(syncTime);
-  }, [isPlaying, syncsV1, syncsV2]);
+  }, [syncsV1, syncsV2]); // Removed isPlaying from dependency array as we use native paused state now
 
   const handlePlayPause = () => {
     if (!video1Ref.current || !video2Ref.current) return;
@@ -248,7 +236,9 @@ function SideBySidePageContent() {
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-8">
         <div className="space-y-2">
           <div className="flex justify-between items-center px-1">
-             <label className="text-sm font-medium text-blue-400">Skier 1</label>
+             <label className="text-sm font-medium text-blue-400">
+               Skier 1 {stagedDriveVideo1 ? (isVideo1Loaded ? <span className="text-green-500 font-bold">- {stagedDriveVideo1.name} (Loaded)</span> : <span className="text-blue-300 font-bold animate-pulse">- {stagedDriveVideo1.name} (Buffering...)</span>) : ''}
+             </label>
              <label className="text-xs text-gray-500 italic cursor-pointer hover:text-blue-300">
                 Or choose local file...
                 <input type="file" accept="video/*" onChange={(e) => handleFileChange(e, 1)} className="hidden" />
@@ -256,7 +246,7 @@ function SideBySidePageContent() {
           </div>
           <div className="aspect-video bg-gray-800 rounded-lg flex items-center justify-center border border-gray-700 overflow-hidden">
               {videoSrc1 ? (
-              <video key={videoSrc1} ref={video1Ref} src={videoSrc1} preload="metadata" onLoadedMetadata={() => handleLoadedMetadata(1)} className="w-full h-full" controls={false} muted/>
+              <video key={videoSrc1} ref={video1Ref} src={videoSrc1} preload="metadata" onCanPlayThrough={() => setIsVideo1Loaded(true)} onLoadedMetadata={() => handleLoadedMetadata(1)} onTimeUpdate={() => { if (video1Ref.current && !isPlaying) setCurrentTime1(video1Ref.current.currentTime); }} className="w-full h-full" controls={false} muted/>
               ) : (
               <p className="text-gray-500">Video Player 1</p>
               )}
@@ -276,7 +266,9 @@ function SideBySidePageContent() {
 
         <div className="space-y-2">
           <div className="flex justify-between items-center px-1">
-             <label className="text-sm font-medium text-green-400">Skier 2</label>
+             <label className="text-sm font-medium text-green-400">
+               Skier 2 {stagedDriveVideo2 ? (isVideo2Loaded ? <span className="text-green-500 font-bold">- {stagedDriveVideo2.name} (Loaded)</span> : <span className="text-green-300 font-bold animate-pulse">- {stagedDriveVideo2.name} (Buffering...)</span>) : ''}
+             </label>
              <label className="text-xs text-gray-500 italic cursor-pointer hover:text-green-300">
                 Or choose local file...
                 <input type="file" accept="video/*" onChange={(e) => handleFileChange(e, 2)} className="hidden" />
@@ -284,7 +276,7 @@ function SideBySidePageContent() {
           </div>
           <div className="aspect-video bg-gray-800 rounded-lg flex items-center justify-center border border-gray-700 overflow-hidden">
               {videoSrc2 ? (
-              <video key={videoSrc2} ref={video2Ref} src={videoSrc2} preload="metadata" onLoadedMetadata={() => handleLoadedMetadata(2)} className="w-full h-full" controls={false} muted/>
+              <video key={videoSrc2} ref={video2Ref} src={videoSrc2} preload="metadata" onCanPlayThrough={() => setIsVideo2Loaded(true)} onLoadedMetadata={() => handleLoadedMetadata(2)} onTimeUpdate={() => { if (video2Ref.current && !isPlaying) setCurrentTime2(video2Ref.current.currentTime); }} className="w-full h-full" controls={false} muted/>
               ) : (
               <p className="text-gray-500">Video Player 2</p>
               )}

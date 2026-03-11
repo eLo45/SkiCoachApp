@@ -48,14 +48,14 @@ const DraggableVideo: React.FC<DraggableVideoProps> = ({ videoName, position, du
   const progress = duration > 0 ? (position / duration) * 100 : 0;
 
   return (
-    <div className="w-full mb-6">
-      <div className="flex justify-between text-xs text-gray-400 mb-1">
-        <span>{videoName}</span>
-        <span>{position.toFixed(2)}s / {duration.toFixed(2)}s</span>
+    <div className="w-full mb-8 mt-4">
+      <div className="flex justify-between text-xs text-gray-400 mb-2">
+        <span className="font-bold tracking-wider uppercase">{videoName}</span>
+        <span className="font-mono">{position.toFixed(2)}s / {duration.toFixed(2)}s</span>
       </div>
       <div 
         ref={containerRef}
-        className="w-full h-8 bg-gray-800 rounded-md relative cursor-pointer border border-gray-700 overflow-hidden"
+        className="w-full h-6 bg-gray-800 rounded-full relative cursor-pointer border border-gray-700 hover:border-gray-500 transition-colors"
         onMouseDown={handleMouseDown}
         onTouchStart={handleMouseDown}
       >
@@ -63,23 +63,33 @@ const DraggableVideo: React.FC<DraggableVideoProps> = ({ videoName, position, du
         {markers.map((m, i) => (
           <div 
             key={i}
-            className="absolute top-0 bottom-0 w-1 bg-yellow-400 z-10 shadow-[0_0_8px_rgba(250,204,21,0.8)]"
-            style={{ left: `${(m / duration) * 100}%` }}
+            className="absolute top-0 bottom-0 w-2 bg-yellow-400 z-10 shadow-[0_0_12px_rgba(250,204,21,1)]"
+            style={{ left: `calc(${(m / duration) * 100}% - 4px)` }}
             title={`Sync Point ${i + 1}`}
-          />
+          >
+             {/* Small triangle at the top to make it pop out more */}
+             <div className="absolute -top-2 left-1/2 -translate-x-1/2 w-0 h-0 border-l-[6px] border-r-[6px] border-b-[8px] border-l-transparent border-r-transparent border-b-yellow-400"></div>
+             {/* Number indicator */}
+             <div className="absolute -bottom-4 left-1/2 -translate-x-1/2 text-[10px] font-bold text-yellow-400">{i + 1}</div>
+          </div>
         ))}
 
-        {/* Progress Fill */}
+        {/* Progress Fill (Removed CSS transition to fix dragging lag) */}
         <div 
-          className="absolute top-0 bottom-0 left-0 transition-all duration-100 ease-out opacity-30"
+          className="absolute top-0 bottom-0 left-0 opacity-40 rounded-l-full"
           style={{ width: `${progress}%`, backgroundColor: color }}
         />
 
-        {/* Draggable Handle */}
+        {/* Draggable Handle (Button) */}
         <div 
-          className="absolute top-0 bottom-0 w-1 bg-white z-20"
-          style={{ left: `${progress}%` }}
-        />
+          className="absolute top-1/2 -translate-y-1/2 w-6 h-6 bg-white rounded-full z-20 shadow-lg flex items-center justify-center cursor-grab active:cursor-grabbing border-2"
+          style={{ left: `calc(${progress}% - 12px)`, borderColor: color }}
+        >
+            {/* Time popover attached to handle */}
+            <div className="absolute -top-7 bg-gray-900 text-white text-[10px] font-mono px-2 py-1 rounded shadow-md border border-gray-700 whitespace-nowrap">
+                {position.toFixed(1)}s
+            </div>
+        </div>
       </div>
     </div>
   );
