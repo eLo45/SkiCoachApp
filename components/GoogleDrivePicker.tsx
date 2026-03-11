@@ -50,25 +50,10 @@ const GoogleDrivePicker: React.FC<GoogleDrivePickerProps> = ({ onVideoSelect, se
   }, [selectedDayFolderId, onVideoSelect]);
 
   const fetchAndPassVideo = async (fileId: string, index: 1 | 2) => {
-    setLoadingFileId(fileId);
-    setError(null);
-    setWarningMsg(null);
-    try {
-      const response = await fetch(`/api/gdrive/download?fileId=${fileId}`);
-      if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.error || `Failed to download video.`);
-      }
-      const blob = await response.blob();
-      const blobUrl = URL.createObjectURL(blob);
-      onVideoSelect(blobUrl, index);
-    } catch (err: any) {
-      setError(err.message);
-      if (index === 1) setSelectedVideo1(null);
-      if (index === 2) setSelectedVideo2(null);
-    } finally {
-      setLoadingFileId(null);
-    }
+    // We instantly pass the API download URL to the video player
+    // This allows the browser to natively stream and buffer the video instead of waiting for a full blob download
+    const videoUrl = `/api/gdrive/download?fileId=${fileId}`;
+    onVideoSelect(videoUrl, index);
   };
 
   const handleVideoClick = (fileId: string) => {
