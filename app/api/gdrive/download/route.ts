@@ -15,41 +15,24 @@ export async function GET(req: NextRequest) {
 
     const drive = await getDriveClient();
 
-    // Forward the Range header if the browser sends it (crucial for video scrubbing/seeking)
-    const rangeHeader = req.headers.get('range');
-    const requestHeaders: any = {};
-    if (rangeHeader) {
-      requestHeaders['Range'] = rangeHeader;
-    }
-
     const driveResponse = await drive.files.get(
       { fileId: fileId, alt: 'media' },
-      { responseType: 'stream', headers: requestHeaders }
+      { responseType: 'stream' }
     );
 
     const readable = driveResponse.data as Readable;
+
+    // Stream directly in Next.js 13+
+    const response = new NextResponse(readable as any);
     
-    // Create the response and pass through the HTTP status (200 or 206)
-    const response = new NextResponse(readable as any, {
-      status: driveResponse.status,
-    });
-    
-    // Copy essential headers for video streaming
-    const headersToProxy = ['content-type', 'content-length', 'content-range', 'accept-ranges'];
-    headersToProxy.forEach(header => {
-      const value = driveResponse.headers[header];
-      if (value) {
-        response.headers.set(header, Array.isArray(value) ? value.join(', ') : value);
-      }
-    });
+    response.headers.set('Content-Type', driveResponse.headers['content-type'] || 'video/mp4');
+    if (driveResponse.headers['content-length']) {
+      response.headers.set('Content-Length', driveResponse.headers['content-length']);
+    }
 
     return response;
   } catch (error: any) {
     console.error('Error downloading file from Google Drive:', error.message);
-    // If it's a 416 Range Not Satisfiable, return that properly
-    if (error.status === 416) {
-        return new NextResponse(null, { status: 416 });
-    }
     return NextResponse.json({ error: 'Error downloading file' }, { status: 500 });
   }
 }

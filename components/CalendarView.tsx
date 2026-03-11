@@ -137,7 +137,7 @@ const CalendarView: React.FC<CalendarViewProps> = ({ onDaySelect, rootFolderId }
 
         {/* Right: List View */}
         <div className="flex flex-col gap-2 h-[350px] overflow-hidden bg-gray-800 p-4 rounded-lg border border-gray-700">
-           <h4 className="text-sm font-semibold text-gray-400 mb-2 uppercase tracking-wider text-center border-b border-gray-700 pb-2">Recent Folders</h4>
+           <h4 className="text-sm font-semibold text-gray-400 mb-2 uppercase tracking-wider text-center border-b border-gray-700 pb-2">Folder List</h4>
            {visibleFolders.length === 0 && !isLoading && (
                <p className="text-gray-500 text-center mt-4">No folders found.</p>
            )}

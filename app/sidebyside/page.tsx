@@ -6,7 +6,7 @@ import Link from 'next/link';
 import GoogleDrivePicker from '@/components/GoogleDrivePicker';
 import CalendarView from '@/components/CalendarView';
 
-function ComparePageContent() {
+function SideBySidePageContent() {
   // Video sources
   const [videoSrc1, setVideoSrc1] = useState<string | null>(null);
   const [videoSrc2, setVideoSrc2] = useState<string | null>(null);
@@ -32,6 +32,12 @@ function ComparePageContent() {
   const [selectedDayFolderId, setSelectedDayFolderId] = useState<string | null>(null);
   const rootFolderId = "1VwYiffrhaG29uaCbb23eSJ9hV7gMzxvV";
 
+  const [stagedDriveVideo1, setStagedDriveVideo1] = useState<{id: string, name: string} | null>(null);
+  const [stagedDriveVideo2, setStagedDriveVideo2] = useState<{id: string, name: string} | null>(null);
+  
+  const [isDownloading1, setIsDownloading1] = useState(false);
+  const [isDownloading2, setIsDownloading2] = useState(false);
+
   // Cleanup blob URLs on unmount to prevent memory leaks
   useEffect(() => {
     return () => {
@@ -44,14 +50,48 @@ function ComparePageContent() {
     setSelectedDayFolderId(folderId);
   };
 
-  const handleVideoSelect = (blobUrl: string | null, index: 1 | 2) => {
+  const handleVideoSelect = useCallback((videoMeta: {id: string, name: string} | null, index: 1 | 2) => {
     if (index === 1) {
-      if (videoSrc1 && videoSrc1.startsWith('blob:')) URL.revokeObjectURL(videoSrc1);
-      setVideoSrc1(blobUrl);
+      setStagedDriveVideo1(videoMeta);
+      // If unselected, clear the player as well
+      if (!videoMeta) {
+          if (videoSrc1 && videoSrc1.startsWith('blob:')) URL.revokeObjectURL(videoSrc1);
+          setVideoSrc1(null);
+      }
     } else {
-      if (videoSrc2 && videoSrc2.startsWith('blob:')) URL.revokeObjectURL(videoSrc2);
-      setVideoSrc2(blobUrl);
+      setStagedDriveVideo2(videoMeta);
+      if (!videoMeta) {
+          if (videoSrc2 && videoSrc2.startsWith('blob:')) URL.revokeObjectURL(videoSrc2);
+          setVideoSrc2(null);
+      }
     }
+  }, [videoSrc1, videoSrc2]);
+
+  const handleLoadDriveVideo = async (index: 1 | 2) => {
+      const stagedVideo = index === 1 ? stagedDriveVideo1 : stagedDriveVideo2;
+      if (!stagedVideo) return;
+
+      const setDownloading = index === 1 ? setIsDownloading1 : setIsDownloading2;
+      const setSrc = index === 1 ? setVideoSrc1 : setVideoSrc2;
+      const currentSrc = index === 1 ? videoSrc1 : videoSrc2;
+
+      setDownloading(true);
+      try {
+          const response = await fetch(`/api/gdrive/download?fileId=${stagedVideo.id}`);
+          if (!response.ok) {
+              const errorData = await response.json();
+              throw new Error(errorData.error || `Failed to download video.`);
+          }
+          const blob = await response.blob();
+          const blobUrl = URL.createObjectURL(blob);
+          
+          if (currentSrc && currentSrc.startsWith('blob:')) URL.revokeObjectURL(currentSrc);
+          setSrc(blobUrl);
+      } catch (err: any) {
+          alert(`Error loading video: ${err.message}`);
+      } finally {
+          setDownloading(false);
+      }
   };
 
   const handleFileChange = (e: ChangeEvent<HTMLInputElement>, videoNumber: 1 | 2) => {
@@ -192,7 +232,7 @@ function ComparePageContent() {
     <div className="w-full max-w-7xl">
       <div className="flex justify-between items-center mb-8">
         <h1 className="text-4xl font-bold text-center w-full">
-          Athlete Video Comparison
+          Side-by-Side Video Analysis
         </h1>
       </div>
 
@@ -203,13 +243,64 @@ function ComparePageContent() {
       <GoogleDrivePicker onVideoSelect={handleVideoSelect} selectedDayFolderId={selectedDayFolderId} />
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-8">
-        <div className="p-4 bg-gray-800 rounded-lg border border-gray-700">
-          <label className="block mb-2 text-sm font-medium text-gray-300">Import Video 1</label>
-          <input type="file" accept="video/*" onChange={(e) => handleFileChange(e, 1)} className="block w-full text-sm text-gray-400 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-blue-100 file:text-blue-700 hover:file:bg-blue-200 mb-4"/>
+        <div className="p-4 bg-gray-800 rounded-lg border border-gray-700 flex flex-col gap-3">
+          <label className="block text-sm font-medium text-gray-300">Skier 1 Source</label>
+          
+          {stagedDriveVideo1 && (
+              <div className="bg-gray-900 p-3 rounded-lg border border-gray-600 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                  <div className="flex flex-col">
+                      <span className="text-xs text-gray-400">Selected from Drive:</span>
+                      <span className="text-sm font-semibold text-white break-all">{stagedDriveVideo1.name}</span>
+                  </div>
+                  <button 
+                      onClick={() => handleLoadDriveVideo(1)}
+                      disabled={isDownloading1}
+                      className="bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded-lg flex items-center justify-center gap-2 disabled:opacity-50 min-w-[120px] transition-colors"
+                  >
+                      {isDownloading1 ? (
+                          <>
+                              <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+                              <span>Loading...</span>
+                          </>
+                      ) : (
+                          "Load Video"
+                      )}
+                  </button>
+              </div>
+          )}
+
+          <div className="text-sm text-gray-400 mt-2">Or upload local file:</div>
+          <input type="file" accept="video/*" onChange={(e) => handleFileChange(e, 1)} className="block w-full text-sm text-gray-400 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-blue-100 file:text-blue-700 hover:file:bg-blue-200"/>
         </div>
-        <div className="p-4 bg-gray-800 rounded-lg border border-gray-700">
-          <label className="block mb-2 text-sm font-medium text-gray-300">Import Video 2</label>
-          <input type="file" accept="video/*" onChange={(e) => handleFileChange(e, 2)} className="block w-full text-sm text-gray-400 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-blue-100 file:text-blue-700 hover:file:bg-blue-200 mb-4"/>
+
+        <div className="p-4 bg-gray-800 rounded-lg border border-gray-700 flex flex-col gap-3">
+          <label className="block text-sm font-medium text-gray-300">Skier 2 Source</label>
+          
+          {stagedDriveVideo2 && (
+              <div className="bg-gray-900 p-3 rounded-lg border border-gray-600 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                  <div className="flex flex-col">
+                      <span className="text-xs text-gray-400">Selected from Drive:</span>
+                      <span className="text-sm font-semibold text-white break-all">{stagedDriveVideo2.name}</span>
+                  </div>
+                  <button 
+                      onClick={() => handleLoadDriveVideo(2)}
+                      disabled={isDownloading2}
+                      className="bg-green-600 hover:bg-green-700 text-white font-bold py-2 px-4 rounded-lg flex items-center justify-center gap-2 disabled:opacity-50 min-w-[120px] transition-colors"
+                  >
+                      {isDownloading2 ? (
+                          <>
+                              <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+                              <span>Loading...</span>
+                          </>
+                      ) : (
+                          "Load Video"
+                      )}
+                  </button>
+              </div>
+          )}
+
+          <div className="text-sm text-gray-400 mt-2">Or upload local file:</div>
+          <input type="file" accept="video/*" onChange={(e) => handleFileChange(e, 2)} className="block w-full text-sm text-gray-400 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-blue-100 file:text-blue-700 hover:file:bg-blue-200"/>
         </div>
       </div>
 
@@ -335,10 +426,10 @@ function ComparePageContent() {
   );
 }
 
-export default function ComparePage() {
+export default function SideBySidePage() {
   return (
     <main className="flex min-h-screen flex-col items-center p-8 bg-black text-white">
-      <ComparePageContent />
+      <SideBySidePageContent />
     </main>
   );
 }
