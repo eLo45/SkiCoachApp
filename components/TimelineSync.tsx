@@ -34,30 +34,32 @@ const DraggableVideo: React.FC<DraggableVideoProps> = ({ videoName, position, on
 
     const containerRect = containerRef.current.getBoundingClientRect();
     const videoWidth = videoRef.current.offsetWidth;
+    const containerWidth = containerRect.width;
     
+    // Calculate new position as percentage of container width
     let newLeft = moveEvent.clientX - containerRect.left - dragStartOffsetRef.current;
-
-    if (newLeft < 0) newLeft = 0;
-    if (newLeft > containerRect.width - videoWidth) {
-      newLeft = containerRect.width - videoWidth;
-    }
     
-    const newPosition = (newLeft / containerRect.width) * 100;
+    // Bounds check
+    const maxLeft = containerWidth - videoWidth;
+    if (newLeft < 0) newLeft = 0;
+    if (newLeft > maxLeft) newLeft = maxLeft;
+    
+    const newPosition = (newLeft / containerWidth) * 100;
     onDrag(newPosition);
-  }, [isDragging, onDrag]);
+  }, [isDragging, onDrag]); // Keep onDrag but ensure parent passes stable ref
 
   useEffect(() => {
+    const mouseMoveListener = (e: globalThis.MouseEvent) => handleMouseMove(e);
+    const mouseUpListener = () => handleMouseUp();
+
     if (isDragging) {
-      document.addEventListener('mousemove', handleMouseMove);
-      document.addEventListener('mouseup', handleMouseUp);
-    } else {
-      document.removeEventListener('mousemove', handleMouseMove);
-      document.removeEventListener('mouseup', handleMouseUp);
+      window.addEventListener('mousemove', mouseMoveListener);
+      window.addEventListener('mouseup', mouseUpListener);
     }
 
     return () => {
-      document.removeEventListener('mousemove', handleMouseMove);
-      document.removeEventListener('mouseup', handleMouseUp);
+      window.removeEventListener('mousemove', mouseMoveListener);
+      window.removeEventListener('mouseup', mouseUpListener);
     };
   }, [isDragging, handleMouseMove, handleMouseUp]);
 
