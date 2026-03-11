@@ -1,77 +1,85 @@
 'use client';
 
-import React, { useRef, MouseEvent, useState, useEffect, useCallback } from 'react';
+import React, { useRef, useCallback, useEffect } from 'react';
 
 interface DraggableVideoProps {
   videoName: string;
-  position: number;
-  onDrag: (newPosition: number) => void;
+  position: number; // current time in seconds
+  duration: number; // total duration in seconds
+  markers: number[]; // timestamps of sync points
+  onSeek: (newTime: number) => void;
+  color: string;
 }
 
-const DraggableVideo: React.FC<DraggableVideoProps> = ({ videoName, position, onDrag }) => {
+const DraggableVideo: React.FC<DraggableVideoProps> = ({ videoName, position, duration, markers, onSeek, color }) => {
   const containerRef = useRef<HTMLDivElement>(null);
-  const videoRef = useRef<HTMLDivElement>(null);
-  const [isDragging, setIsDragging] = useState(false);
-  const dragStartOffsetRef = useRef(0);
 
-  const handleMouseDown = (event: MouseEvent<HTMLDivElement>) => {
-    if (!videoRef.current) return;
-    event.preventDefault();
-    setIsDragging(true);
-    dragStartOffsetRef.current = event.clientX - videoRef.current.getBoundingClientRect().left;
-    document.body.style.cursor = 'grabbing';
+  const handleMouseDown = (event: React.MouseEvent | React.TouchEvent) => {
+    updatePosition(event);
+    
+    const onMouseMove = (e: MouseEvent | TouchEvent) => updatePosition(e);
+    const onMouseUp = () => {
+      window.removeEventListener('mousemove', onMouseMove);
+      window.removeEventListener('mouseup', onMouseUp);
+      window.removeEventListener('touchmove', onMouseMove);
+      window.removeEventListener('touchend', onMouseUp);
+    };
+
+    window.addEventListener('mousemove', onMouseMove);
+    window.addEventListener('mouseup', onMouseUp);
+    window.addEventListener('touchmove', onMouseMove);
+    window.addEventListener('touchend', onMouseUp);
   };
 
-  const handleMouseUp = useCallback(() => {
-    if (isDragging) {
-      setIsDragging(false);
-      document.body.style.cursor = 'default';
-    }
-  }, [isDragging]);
-
-  const handleMouseMove = useCallback((moveEvent: globalThis.MouseEvent) => {
-    if (!isDragging || !containerRef.current || !videoRef.current) return;
-
-    const containerRect = containerRef.current.getBoundingClientRect();
-    const videoWidth = videoRef.current.offsetWidth;
-    const containerWidth = containerRect.width;
+  const updatePosition = (event: React.MouseEvent | React.TouchEvent | MouseEvent | TouchEvent) => {
+    if (!containerRef.current || duration === 0) return;
     
-    // Calculate new position as percentage of container width
-    let newLeft = moveEvent.clientX - containerRect.left - dragStartOffsetRef.current;
+    const rect = containerRef.current.getBoundingClientRect();
+    const clientX = 'touches' in event ? event.touches[0].clientX : (event as MouseEvent).clientX;
     
-    // Bounds check
-    const maxLeft = containerWidth - videoWidth;
-    if (newLeft < 0) newLeft = 0;
-    if (newLeft > maxLeft) newLeft = maxLeft;
+    let x = clientX - rect.left;
+    if (x < 0) x = 0;
+    if (x > rect.width) x = rect.width;
     
-    const newPosition = (newLeft / containerWidth) * 100;
-    onDrag(newPosition);
-  }, [isDragging, onDrag]); // Keep onDrag but ensure parent passes stable ref
+    const newTime = (x / rect.width) * duration;
+    onSeek(newTime);
+  };
 
-  useEffect(() => {
-    const mouseMoveListener = (e: globalThis.MouseEvent) => handleMouseMove(e);
-    const mouseUpListener = () => handleMouseUp();
-
-    if (isDragging) {
-      window.addEventListener('mousemove', mouseMoveListener);
-      window.addEventListener('mouseup', mouseUpListener);
-    }
-
-    return () => {
-      window.removeEventListener('mousemove', mouseMoveListener);
-      window.removeEventListener('mouseup', mouseUpListener);
-    };
-  }, [isDragging, handleMouseMove, handleMouseUp]);
+  const progress = duration > 0 ? (position / duration) * 100 : 0;
 
   return (
-    <div ref={containerRef} className="w-full h-16 bg-gray-800 rounded-lg relative my-4 border border-gray-700">
-      <div
-        ref={videoRef}
-        className="absolute h-full w-1/4 bg-blue-600 rounded-lg cursor-grab flex items-center justify-center"
-        style={{ left: `${position}%` }}
+    <div className="w-full mb-6">
+      <div className="flex justify-between text-xs text-gray-400 mb-1">
+        <span>{videoName}</span>
+        <span>{position.toFixed(2)}s / {duration.toFixed(2)}s</span>
+      </div>
+      <div 
+        ref={containerRef}
+        className="w-full h-8 bg-gray-800 rounded-md relative cursor-pointer border border-gray-700 overflow-hidden"
         onMouseDown={handleMouseDown}
+        onTouchStart={handleMouseDown}
       >
-        <span className="text-white text-sm font-semibold select-none">{videoName}</span>
+        {/* Sync Point Markers */}
+        {markers.map((m, i) => (
+          <div 
+            key={i}
+            className="absolute top-0 bottom-0 w-1 bg-yellow-400 z-10 shadow-[0_0_8px_rgba(250,204,21,0.8)]"
+            style={{ left: `${(m / duration) * 100}%` }}
+            title={`Sync Point ${i + 1}`}
+          />
+        ))}
+
+        {/* Progress Fill */}
+        <div 
+          className="absolute top-0 bottom-0 left-0 transition-all duration-100 ease-out opacity-30"
+          style={{ width: `${progress}%`, backgroundColor: color }}
+        />
+
+        {/* Draggable Handle */}
+        <div 
+          className="absolute top-0 bottom-0 w-1 bg-white z-20"
+          style={{ left: `${progress}%` }}
+        />
       </div>
     </div>
   );
@@ -80,27 +88,37 @@ const DraggableVideo: React.FC<DraggableVideoProps> = ({ videoName, position, on
 interface TimelineSyncProps {
     video1Name: string;
     video2Name: string;
-    position1: number;
-    position2: number;
-    onDrag1: (newPosition: number) => void;
-    onDrag2: (newPosition: number) => void;
+    pos1: number;
+    pos2: number;
+    dur1: number;
+    dur2: number;
+    markers1: number[];
+    markers2: number[];
+    onSeek1: (time: number) => void;
+    onSeek2: (time: number) => void;
 }
 
 const TimelineSync: React.FC<TimelineSyncProps> = ({
-    video1Name,
-    video2Name,
-    position1,
-    position2,
-    onDrag1,
-    onDrag2
+    video1Name, video2Name, pos1, pos2, dur1, dur2, markers1, markers2, onSeek1, onSeek2
 }) => {
     return (
-        <div className="w-full max-w-4xl mx-auto mt-12">
-            <p className="text-center text-sm text-gray-400 mb-4">
-                Drag videos to adjust start times
-            </p>
-            <DraggableVideo videoName={video1Name} position={position1} onDrag={onDrag1} />
-            <DraggableVideo videoName={video2Name} position={position2} onDrag={onDrag2} />
+        <div className="w-full max-w-4xl mx-auto mt-8 p-4 bg-gray-900 rounded-xl border border-gray-800 shadow-2xl">
+            <DraggableVideo 
+              videoName={video1Name} 
+              position={pos1} 
+              duration={dur1} 
+              markers={markers1} 
+              onSeek={onSeek1} 
+              color="#4f46e5" 
+            />
+            <DraggableVideo 
+              videoName={video2Name} 
+              position={pos2} 
+              duration={dur2} 
+              markers={markers2} 
+              onSeek={onSeek2} 
+              color="#0891b2" 
+            />
         </div>
     );
 };

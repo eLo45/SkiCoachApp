@@ -22,14 +22,12 @@ function ComparePageContent() {
   // Video metadata
   const [duration1, setDuration1] = useState(0);
   const [duration2, setDuration2] = useState(0);
+  const [currentTime1, setCurrentTime1] = useState(0);
+  const [currentTime2, setCurrentTime2] = useState(0);
 
-  // Timeline offsets (as percentage 0-75)
-  const [offset1, setOffset1] = useState(10);
-  const [offset2, setOffset2] = useState(10);
-
-  // Sync points (in seconds)
-  const [syncPoint1, setSyncPoint1] = useState<number | null>(null);
-  const [syncPoint2, setSyncPoint2] = useState<number | null>(null);
+  // NEW: Multi-Sync point state (max 2 points)
+  const [syncsV1, setSyncsV1] = useState<number[]>([]);
+  const [syncsV2, setSyncsV2] = useState<number[]>([]);
 
   const [accessToken, setAccessToken] = useState<string | null>(null);
   const [selectedDayFolderId, setSelectedDayFolderId] = useState<string | null>(null);
@@ -68,93 +66,56 @@ function ComparePageContent() {
     }
   };
 
-  // ONLY seek when the offset slider itself moves, not when pausing/playing
-  useEffect(() => {
-    if (!isPlaying && video1Ref.current && duration1) {
-      video1Ref.current.currentTime = duration1 * (offset1 / 100);
-    }
-  }, [offset1]); // Only depend on offset, not isPlaying
-
-  useEffect(() => {
-    if (!isPlaying && video2Ref.current && duration2) {
-      video2Ref.current.currentTime = duration2 * (offset2 / 100);
-    }
-  }, [offset2]); // Only depend on offset, not isPlaying
-
-  const handleMarkSync = (videoNumber: 1 | 2) => {
-    let newSyncPoint1 = syncPoint1;
-    let newSyncPoint2 = syncPoint2;
-
-    if (videoNumber === 1 && video1Ref.current) {
-      const newPoint = video1Ref.current.currentTime;
-      setSyncPoint1(newPoint);
-      newSyncPoint1 = newPoint;
-    } else if (videoNumber === 2 && video2Ref.current) {
-      const newPoint = video2Ref.current.currentTime;
-      setSyncPoint2(newPoint);
-      newSyncPoint2 = newPoint;
-    }
-
-    if (newSyncPoint1 !== null && newSyncPoint2 !== null && duration1 > 0 && duration2 > 0) {
-      const timeDifference = newSyncPoint1 - newSyncPoint2;
-      const newOffsetInSeconds = (duration1 * (offset1 / 100)) - timeDifference;
-      let newOffsetPercentage = (newOffsetInSeconds / duration2) * 100;
-      
-      if (newOffsetPercentage < 0) newOffsetPercentage = 0;
-      if (newOffsetPercentage > 75) newOffsetPercentage = 75;
-      setOffset2(newOffsetPercentage);
-    }
-  };
-  
+  // Sync Logic: Dual-Offset Piecewise Synchronization
   const syncTime = useCallback(() => {
-    if (!isPlaying || !video1Ref.current || !video2Ref.current || !duration1 || !duration2) {
-        return;
-    };
+    if (!isPlaying || !video1Ref.current || !video2Ref.current) return;
 
-    const v1Time = video1Ref.current.currentTime;
-    const v1StartOffset = duration1 * (offset1 / 100);
-    const v2StartOffset = duration2 * (offset2 / 100);
+    const v1 = video1Ref.current;
+    const v2 = video2Ref.current;
     
-    const relativeTime = v1Time - v1StartOffset;
-    const v2TargetTime = v2StartOffset + relativeTime;
+    setCurrentTime1(v1.currentTime);
+    setCurrentTime2(v2.currentTime);
 
-    if (Math.abs(video2Ref.current.currentTime - v2TargetTime) > 0.05) {
-        video2Ref.current.currentTime = v2TargetTime;
+    // Determine which sync offset to use
+    let activeOffsetIndex = -1;
+    
+    // Check if both sync points are set and if we've passed the second one
+    if (syncsV1.length >= 2 && syncsV2.length >= 2 && v1.currentTime >= syncsV1[1]) {
+      activeOffsetIndex = 1;
+    } else if (syncsV1.length >= 1 && syncsV2.length >= 1) {
+      activeOffsetIndex = 0;
+    }
+
+    if (activeOffsetIndex !== -1) {
+      const s1 = syncsV1[activeOffsetIndex];
+      const s2 = syncsV2[activeOffsetIndex];
+      
+      const relativeToSync = v1.currentTime - s1;
+      const v2TargetTime = s2 + relativeToSync;
+
+      // Sync if drift > 0.05s
+      if (Math.abs(v2.currentTime - v2TargetTime) > 0.05) {
+        v2.currentTime = v2TargetTime;
+      }
     }
     
-    if (video1Ref.current.ended || video2Ref.current.ended) {
+    if (v1.ended || v2.ended) {
         setIsPlaying(false);
         return;
     }
 
     animationFrameId.current = requestAnimationFrame(syncTime);
-  }, [isPlaying, offset1, offset2, duration1, duration2]);
-
-  const handleReset = () => {
-    setIsPlaying(false);
-    if (animationFrameId.current) cancelAnimationFrame(animationFrameId.current);
-
-    if (video1Ref.current) {
-      video1Ref.current.pause();
-      video1Ref.current.currentTime = duration1 * (offset1 / 100);
-    }
-    if (video2Ref.current) {
-      video2Ref.current.pause();
-      video2Ref.current.currentTime = duration2 * (offset2 / 100);
-    }
-  };
+  }, [isPlaying, syncsV1, syncsV2]);
 
   const handlePlayPause = () => {
     if (!video1Ref.current || !video2Ref.current) return;
 
     if (isPlaying) {
-      // PAUSE: Stop exactly where they are
       setIsPlaying(false);
       video1Ref.current.pause();
       video2Ref.current.pause();
       if (animationFrameId.current) cancelAnimationFrame(animationFrameId.current);
     } else {
-      // PLAY: Resume from current position
       setIsPlaying(true);
       video1Ref.current.play();
       video2Ref.current.play();
@@ -162,12 +123,59 @@ function ComparePageContent() {
     }
   };
 
+  const handleMarkSync = (videoNumber: 1 | 2) => {
+    const vid = videoNumber === 1 ? video1Ref.current : video2Ref.current;
+    if (!vid) return;
+
+    if (videoNumber === 1) {
+      if (syncsV1.length < 2) setSyncsV1([...syncsV1, vid.currentTime]);
+    } else {
+      if (syncsV2.length < 2) setSyncsV2([...syncsV2, vid.currentTime]);
+    }
+  };
+
+  const jumpToSync = (index: number) => {
+    if (syncsV1[index] === undefined || syncsV2[index] === undefined) return;
+    
+    setIsPlaying(false);
+    if (animationFrameId.current) cancelAnimationFrame(animationFrameId.current);
+
+    if (video1Ref.current) {
+      video1Ref.current.pause();
+      video1Ref.current.currentTime = syncsV1[index];
+      setCurrentTime1(syncsV1[index]);
+    }
+    if (video2Ref.current) {
+      video2Ref.current.pause();
+      video2Ref.current.currentTime = syncsV2[index];
+      setCurrentTime2(syncsV2[index]);
+    }
+  };
+
+  const clearSyncs = () => {
+    setSyncsV1([]);
+    setSyncsV2([]);
+  };
+
   const stepFrame = (direction: 1 | -1) => {
     if (isPlaying || !video1Ref.current || !video2Ref.current) return;
-    
-    const frameTime = (1 / 30) * 2; // Jump 2 frames (approx 0.066s)
+    const frameTime = (1 / 30) * 2;
     video1Ref.current.currentTime += direction * frameTime;
     video2Ref.current.currentTime += direction * frameTime;
+    setCurrentTime1(video1Ref.current.currentTime);
+    setCurrentTime2(video2Ref.current.currentTime);
+  };
+
+  const handleManualSeek1 = (time: number) => {
+    if (!video1Ref.current) return;
+    video1Ref.current.currentTime = time;
+    setCurrentTime1(time);
+  };
+
+  const handleManualSeek2 = (time: number) => {
+    if (!video2Ref.current) return;
+    video2Ref.current.currentTime = time;
+    setCurrentTime2(time);
   };
 
   return (
@@ -186,79 +194,120 @@ function ComparePageContent() {
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-8">
         <div className="p-4 bg-gray-800 rounded-lg border border-gray-700">
-          <label htmlFor="video1" className="block mb-2 text-sm font-medium text-gray-300">Import Video 1</label>
-          <input type="file" id="video1" accept="video/*" onChange={(e) => handleFileChange(e, 1)} className="block w-full text-sm text-gray-400 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-blue-100 file:text-blue-700 hover:file:bg-blue-200 mb-4"/>
+          <label className="block mb-2 text-sm font-medium text-gray-300">Import Video 1</label>
+          <input type="file" accept="video/*" onChange={(e) => handleFileChange(e, 1)} className="block w-full text-sm text-gray-400 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-blue-100 file:text-blue-700 hover:file:bg-blue-200 mb-4"/>
         </div>
         <div className="p-4 bg-gray-800 rounded-lg border border-gray-700">
-          <label htmlFor="video2" className="block mb-2 text-sm font-medium text-gray-300">Import Video 2</label>
-          <input type="file" id="video2" accept="video/*" onChange={(e) => handleFileChange(e, 2)} className="block w-full text-sm text-gray-400 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-blue-100 file:text-blue-700 hover:file:bg-blue-200 mb-4"/>
+          <label className="block mb-2 text-sm font-medium text-gray-300">Import Video 2</label>
+          <input type="file" accept="video/*" onChange={(e) => handleFileChange(e, 2)} className="block w-full text-sm text-gray-400 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-blue-100 file:text-blue-700 hover:file:bg-blue-200 mb-4"/>
         </div>
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-        <div className="space-y-2">
-          <div className="aspect-video bg-gray-800 rounded-lg flex items-center justify-center border border-gray-700">
+        <div className="space-y-4">
+          <div className="aspect-video bg-gray-800 rounded-lg flex items-center justify-center border border-gray-700 overflow-hidden">
               {videoSrc1 ? (
               <video ref={video1Ref} src={videoSrc1} onLoadedMetadata={() => handleLoadedMetadata(1)} className="w-full h-full" controls={false} muted/>
               ) : (
               <p className="text-gray-500">Video Player 1</p>
               )}
           </div>
-          <button onClick={() => handleMarkSync(1)} disabled={!videoSrc1} className="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-2 px-4 rounded-lg disabled:bg-gray-600 disabled:cursor-not-allowed">
-              Mark Sync Point 1
+          <button 
+            onClick={() => handleMarkSync(1)} 
+            disabled={!videoSrc1 || syncsV1.length >= 2} 
+            className="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-2 rounded-lg disabled:opacity-50"
+          >
+              {syncsV1.length === 0 ? "Mark Sync Point 1" : syncsV1.length === 1 ? "Mark Sync Point 2" : "Sync Points Full"}
           </button>
-          <p className="text-center text-sm text-gray-400">Sync Point: {syncPoint1?.toFixed(2) ?? 'Not set'}</p>
+          <div className="flex justify-between text-xs text-gray-400 px-2">
+            <span>Sync 1: {syncsV1[0]?.toFixed(2) || "---"}</span>
+            <span>Sync 2: {syncsV1[1]?.toFixed(2) || "---"}</span>
+          </div>
         </div>
-        <div className="space-y-2">
-          <div className="aspect-video bg-gray-800 rounded-lg flex items-center justify-center border border-gray-700">
+
+        <div className="space-y-4">
+          <div className="aspect-video bg-gray-800 rounded-lg flex items-center justify-center border border-gray-700 overflow-hidden">
               {videoSrc2 ? (
               <video ref={video2Ref} src={videoSrc2} onLoadedMetadata={() => handleLoadedMetadata(2)} className="w-full h-full" controls={false} muted/>
               ) : (
               <p className="text-gray-500">Video Player 2</p>
               )}
           </div>
-           <button onClick={() => handleMarkSync(2)} disabled={!videoSrc2} className="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-2 px-4 rounded-lg disabled:bg-gray-600 disabled:cursor-not-allowed">
-              Mark Sync Point 2
+           <button 
+            onClick={() => handleMarkSync(2)} 
+            disabled={!videoSrc2 || syncsV2.length >= 2} 
+            className="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-2 rounded-lg disabled:opacity-50"
+          >
+              {syncsV2.length === 0 ? "Mark Sync Point 1" : syncsV2.length === 1 ? "Mark Sync Point 2" : "Sync Points Full"}
           </button>
-          <p className="text-center text-sm text-gray-400">Sync Point: {syncPoint2?.toFixed(2) ?? 'Not set'}</p>
+          <div className="flex justify-between text-xs text-gray-400 px-2">
+            <span>Sync 1: {syncsV2[0]?.toFixed(2) || "---"}</span>
+            <span>Sync 2: {syncsV2[1]?.toFixed(2) || "---"}</span>
+          </div>
         </div>
       </div>
       
-      <div className="w-full max-w-4xl mx-auto my-8 flex flex-col items-center gap-4">
+      <div className="w-full max-w-4xl mx-auto my-8 flex flex-col items-center gap-6">
           <div className="flex justify-center gap-4">
             {!isPlaying && (
-              <button onClick={() => stepFrame(-1)} className="bg-gray-700 hover:bg-gray-600 text-white font-bold py-2 px-4 rounded-lg text-lg transition-colors">
+              <button onClick={() => stepFrame(-1)} className="bg-gray-700 hover:bg-gray-600 text-white font-bold py-2 px-4 rounded-lg transition-colors">
                 &larr; -2 Frames
               </button>
             )}
             
-            <button onClick={handlePlayPause} className={`${isPlaying ? 'bg-orange-600 hover:bg-orange-700' : 'bg-green-600 hover:bg-green-700'} text-white font-bold py-2 px-6 rounded-lg text-lg transition-colors w-32`}>
+            <button onClick={handlePlayPause} className={`${isPlaying ? 'bg-orange-600 hover:bg-orange-700' : 'bg-green-600 hover:bg-green-700'} text-white font-bold py-2 px-8 rounded-lg text-xl transition-all w-40 shadow-lg`}>
                 {isPlaying ? 'Pause' : 'Play'}
             </button>
 
             {!isPlaying && (
-              <button onClick={() => stepFrame(1)} className="bg-gray-700 hover:bg-gray-600 text-white font-bold py-2 px-4 rounded-lg text-lg transition-colors">
+              <button onClick={() => stepFrame(1)} className="bg-gray-700 hover:bg-gray-600 text-white font-bold py-2 px-4 rounded-lg transition-colors">
                 +2 Frames &rarr;
               </button>
             )}
           </div>
           
-          <button onClick={handleReset} className="bg-gray-600 hover:bg-gray-700 text-white font-bold py-2 px-6 rounded-lg text-lg transition-colors w-32">
-              Reset
-          </button>
+          <div className="flex flex-wrap justify-center gap-4">
+              <button 
+                onClick={() => jumpToSync(0)} 
+                disabled={syncsV1.length < 1 || syncsV2.length < 1}
+                className="bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-6 rounded-lg disabled:opacity-30 transition-all"
+              >
+                Jump to Sync 1
+              </button>
+              
+              {syncsV1.length >= 2 && syncsV2.length >= 2 && (
+                <button 
+                  onClick={() => jumpToSync(1)} 
+                  className="bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-6 rounded-lg transition-all"
+                >
+                  Jump to Sync 2
+                </button>
+              )}
+
+              <button 
+                onClick={clearSyncs} 
+                className="bg-red-900/50 hover:bg-red-800 text-red-200 border border-red-700 font-bold py-2 px-6 rounded-lg transition-all"
+              >
+                Clear All Syncs
+              </button>
+          </div>
       </div>
 
       <TimelineSync 
-          video1Name={`Video 1 (${(duration1 * (offset1/100)).toFixed(1)}s)`}
-          video2Name={`Video 2 (${(duration2 * (offset2/100)).toFixed(1)}s)`}
-          position1={offset1}
-          position2={offset2}
-          onDrag1={setOffset1}
-          onDrag2={setOffset2}
+          video1Name="Video 1"
+          video2Name="Video 2"
+          pos1={currentTime1}
+          pos2={currentTime2}
+          dur1={duration1}
+          dur2={duration2}
+          markers1={syncsV1}
+          markers2={syncsV2}
+          onSeek1={handleManualSeek1}
+          onSeek2={handleManualSeek2}
       />
       
-      <div className="text-center mt-8">
-          <Link href="/" className="text-blue-400 hover:text-blue-300 transition-colors">
+      <div className="text-center mt-12 pb-12">
+          <Link href="/" className="text-gray-500 hover:text-white transition-colors">
               &larr; Back to Home
           </Link>
       </div>
