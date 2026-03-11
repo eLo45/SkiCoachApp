@@ -47,7 +47,7 @@ const GoogleDrivePicker: React.FC<GoogleDrivePickerProps> = ({ onVideoSelect, se
     }
   }, [selectedDayFolderId]); // Keep onVideoSelect out to prevent infinite re-renders
 
-  const handleVideoClick = (fileId: string, fileName: string) => {
+  const handleVideoClick = (fileId: string, fileName: string, webContentLink: string) => {
     setWarningMsg(null);
 
     // Deselect logic
@@ -62,8 +62,10 @@ const GoogleDrivePicker: React.FC<GoogleDrivePickerProps> = ({ onVideoSelect, se
       return;
     }
 
-    // Select logic: Pass the streaming URL immediately
-    const streamingUrl = `/api/gdrive/download?fileId=${fileId}`;
+    // Since the folder is public, we can use Google's direct CDN streaming link instead of our slow proxy!
+    // The webContentLink looks like: https://drive.google.com/uc?id=XYZ&export=download
+    // HTML5 video tags can play these natively if the file is public.
+    const streamingUrl = webContentLink;
 
     if (!selectedVideo1) {
       setSelectedVideo1(fileId);
@@ -124,7 +126,7 @@ const GoogleDrivePicker: React.FC<GoogleDrivePickerProps> = ({ onVideoSelect, se
             return (
                 <div 
                     key={video.id} 
-                    onClick={() => handleVideoClick(video.id, video.name)} 
+                    onClick={() => handleVideoClick(video.id, video.name, video.webContentLink)} 
                     className={`relative cursor-pointer border-2 rounded-lg bg-gray-800 flex flex-col items-center justify-center p-2 transition-all ${borderClass}`}
                 >
                     <div className="w-full aspect-video bg-gray-900 rounded flex items-center justify-center mb-2 overflow-hidden">
