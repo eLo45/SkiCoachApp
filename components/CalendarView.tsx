@@ -1,8 +1,6 @@
-
 'use client';
 
 import React, { useState, useEffect } from 'react';
-import { useGoogleLogin, TokenResponse } from '@react-oauth/google';
 import Calendar from 'react-calendar';
 import 'react-calendar/dist/Calendar.css';
 
@@ -17,16 +15,6 @@ const CalendarView: React.FC<CalendarViewProps> = ({ onDaySelect, rootFolderId }
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [value, onChange] = useState<any>(new Date());
-
-  const login = useGoogleLogin({
-    onSuccess: (tokenResponse: TokenResponse) => {
-      setAccessToken(tokenResponse.access_token);
-    },
-    onError: () => {
-      setError('Google login failed.');
-    },
-    scope: 'https://www.googleapis.com/auth/drive.readonly',
-  });
 
   useEffect(() => {
     if (accessToken) {
@@ -85,8 +73,9 @@ const CalendarView: React.FC<CalendarViewProps> = ({ onDaySelect, rootFolderId }
   if (!accessToken) {
     return (
       <div className="my-4 p-4 border border-gray-700 rounded-lg">
-        <button onClick={() => login()} className="bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded w-full">
-          Connect to Google Drive
+        <p className="text-gray-400 mb-4">Google Drive integration is currently disabled.</p>
+        <button disabled className="bg-gray-600 text-white font-bold py-2 px-4 rounded w-full cursor-not-allowed">
+          Connect to Google Drive (Disabled)
         </button>
       </div>
     );
