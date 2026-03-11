@@ -50,19 +50,26 @@ function SideBySidePageContent() {
     setSelectedDayFolderId(folderId);
   };
 
-  const handleVideoSelect = useCallback((videoMeta: {id: string, name: string} | null, index: 1 | 2) => {
+  const handleVideoSelect = useCallback((streamingUrl: string | null, index: 1 | 2) => {
     if (index === 1) {
-      setStagedDriveVideo1(videoMeta);
-      // If unselected, clear the player as well
-      if (!videoMeta) {
-          if (videoSrc1 && videoSrc1.startsWith('blob:')) URL.revokeObjectURL(videoSrc1);
-          setVideoSrc1(null);
+      // Clear local blobs if we are switching sources to prevent leaks
+      if (videoSrc1 && videoSrc1.startsWith('blob:')) URL.revokeObjectURL(videoSrc1);
+      setVideoSrc1(streamingUrl);
+      
+      // Auto-load player
+      if (streamingUrl) {
+          setTimeout(() => {
+              if (video1Ref.current) video1Ref.current.load();
+          }, 50);
       }
     } else {
-      setStagedDriveVideo2(videoMeta);
-      if (!videoMeta) {
-          if (videoSrc2 && videoSrc2.startsWith('blob:')) URL.revokeObjectURL(videoSrc2);
-          setVideoSrc2(null);
+      if (videoSrc2 && videoSrc2.startsWith('blob:')) URL.revokeObjectURL(videoSrc2);
+      setVideoSrc2(streamingUrl);
+      
+      if (streamingUrl) {
+          setTimeout(() => {
+              if (video2Ref.current) video2Ref.current.load();
+          }, 50);
       }
     }
   }, [videoSrc1, videoSrc2]);
@@ -73,25 +80,18 @@ function SideBySidePageContent() {
 
       const setDownloading = index === 1 ? setIsDownloading1 : setIsDownloading2;
       const setSrc = index === 1 ? setVideoSrc1 : setVideoSrc2;
-      const currentSrc = index === 1 ? videoSrc1 : videoSrc2;
+      const videoRef = index === 1 ? video1Ref : video2Ref;
 
-      setDownloading(true);
-      try {
-          const response = await fetch(`/api/gdrive/download?fileId=${stagedVideo.id}`);
-          if (!response.ok) {
-              const errorData = await response.json();
-              throw new Error(errorData.error || `Failed to download video.`);
+      // We don't download the blob anymore. We just set the source to our streaming API endpoint.
+      const streamingUrl = `/api/gdrive/download?fileId=${stagedVideo.id}`;
+      setSrc(streamingUrl);
+      
+      // Give the video element a tiny moment to register the new src, then explicitly load it
+      setTimeout(() => {
+          if (videoRef.current) {
+              videoRef.current.load();
           }
-          const blob = await response.blob();
-          const blobUrl = URL.createObjectURL(blob);
-          
-          if (currentSrc && currentSrc.startsWith('blob:')) URL.revokeObjectURL(currentSrc);
-          setSrc(blobUrl);
-      } catch (err: any) {
-          alert(`Error loading video: ${err.message}`);
-      } finally {
-          setDownloading(false);
-      }
+      }, 50);
   };
 
   const handleFileChange = (e: ChangeEvent<HTMLInputElement>, videoNumber: 1 | 2) => {
@@ -99,11 +99,14 @@ function SideBySidePageContent() {
     if (file) {
       const url = URL.createObjectURL(file);
       if (videoNumber === 1) {
-        if (videoSrc1 && videoSrc1.startsWith('blob:')) URL.revokeObjectURL(videoSrc1);
+        // Do not immediately revoke the old URL here as it can disrupt React's render cycle
+        // The useEffect hook will naturally clean it up when the component unmounts or src changes
         setVideoSrc1(url);
+        // Clear staged drive video so UI knows we are using local
+        setStagedDriveVideo1(null); 
       } else {
-        if (videoSrc2 && videoSrc2.startsWith('blob:')) URL.revokeObjectURL(videoSrc2);
         setVideoSrc2(url);
+        setStagedDriveVideo2(null);
       }
     }
   };
@@ -242,73 +245,18 @@ function SideBySidePageContent() {
       
       <GoogleDrivePicker onVideoSelect={handleVideoSelect} selectedDayFolderId={selectedDayFolderId} />
 
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-8">
-        <div className="p-4 bg-gray-800 rounded-lg border border-gray-700 flex flex-col gap-3">
-          <label className="block text-sm font-medium text-gray-300">Skier 1 Source</label>
-          
-          {stagedDriveVideo1 && (
-              <div className="bg-gray-900 p-3 rounded-lg border border-gray-600 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-                  <div className="flex flex-col">
-                      <span className="text-xs text-gray-400">Selected from Drive:</span>
-                      <span className="text-sm font-semibold text-white break-all">{stagedDriveVideo1.name}</span>
-                  </div>
-                  <button 
-                      onClick={() => handleLoadDriveVideo(1)}
-                      disabled={isDownloading1}
-                      className="bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded-lg flex items-center justify-center gap-2 disabled:opacity-50 min-w-[120px] transition-colors"
-                  >
-                      {isDownloading1 ? (
-                          <>
-                              <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
-                              <span>Loading...</span>
-                          </>
-                      ) : (
-                          "Load Video"
-                      )}
-                  </button>
-              </div>
-          )}
-
-          <div className="text-sm text-gray-400 mt-2">Or upload local file:</div>
-          <input type="file" accept="video/*" onChange={(e) => handleFileChange(e, 1)} className="block w-full text-sm text-gray-400 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-blue-100 file:text-blue-700 hover:file:bg-blue-200"/>
-        </div>
-
-        <div className="p-4 bg-gray-800 rounded-lg border border-gray-700 flex flex-col gap-3">
-          <label className="block text-sm font-medium text-gray-300">Skier 2 Source</label>
-          
-          {stagedDriveVideo2 && (
-              <div className="bg-gray-900 p-3 rounded-lg border border-gray-600 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-                  <div className="flex flex-col">
-                      <span className="text-xs text-gray-400">Selected from Drive:</span>
-                      <span className="text-sm font-semibold text-white break-all">{stagedDriveVideo2.name}</span>
-                  </div>
-                  <button 
-                      onClick={() => handleLoadDriveVideo(2)}
-                      disabled={isDownloading2}
-                      className="bg-green-600 hover:bg-green-700 text-white font-bold py-2 px-4 rounded-lg flex items-center justify-center gap-2 disabled:opacity-50 min-w-[120px] transition-colors"
-                  >
-                      {isDownloading2 ? (
-                          <>
-                              <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
-                              <span>Loading...</span>
-                          </>
-                      ) : (
-                          "Load Video"
-                      )}
-                  </button>
-              </div>
-          )}
-
-          <div className="text-sm text-gray-400 mt-2">Or upload local file:</div>
-          <input type="file" accept="video/*" onChange={(e) => handleFileChange(e, 2)} className="block w-full text-sm text-gray-400 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-blue-100 file:text-blue-700 hover:file:bg-blue-200"/>
-        </div>
-      </div>
-
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-        <div className="space-y-4">
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-8">
+        <div className="space-y-2">
+          <div className="flex justify-between items-center px-1">
+             <label className="text-sm font-medium text-blue-400">Skier 1</label>
+             <label className="text-xs text-gray-500 italic cursor-pointer hover:text-blue-300">
+                Or choose local file...
+                <input type="file" accept="video/*" onChange={(e) => handleFileChange(e, 1)} className="hidden" />
+             </label>
+          </div>
           <div className="aspect-video bg-gray-800 rounded-lg flex items-center justify-center border border-gray-700 overflow-hidden">
               {videoSrc1 ? (
-              <video ref={video1Ref} src={videoSrc1} onLoadedMetadata={() => handleLoadedMetadata(1)} className="w-full h-full" controls={false} muted/>
+              <video key={videoSrc1} ref={video1Ref} src={videoSrc1} preload="metadata" onLoadedMetadata={() => handleLoadedMetadata(1)} className="w-full h-full" controls={false} muted/>
               ) : (
               <p className="text-gray-500">Video Player 1</p>
               )}
@@ -326,10 +274,17 @@ function SideBySidePageContent() {
           </div>
         </div>
 
-        <div className="space-y-4">
+        <div className="space-y-2">
+          <div className="flex justify-between items-center px-1">
+             <label className="text-sm font-medium text-green-400">Skier 2</label>
+             <label className="text-xs text-gray-500 italic cursor-pointer hover:text-green-300">
+                Or choose local file...
+                <input type="file" accept="video/*" onChange={(e) => handleFileChange(e, 2)} className="hidden" />
+             </label>
+          </div>
           <div className="aspect-video bg-gray-800 rounded-lg flex items-center justify-center border border-gray-700 overflow-hidden">
               {videoSrc2 ? (
-              <video ref={video2Ref} src={videoSrc2} onLoadedMetadata={() => handleLoadedMetadata(2)} className="w-full h-full" controls={false} muted/>
+              <video key={videoSrc2} ref={video2Ref} src={videoSrc2} preload="metadata" onLoadedMetadata={() => handleLoadedMetadata(2)} className="w-full h-full" controls={false} muted/>
               ) : (
               <p className="text-gray-500">Video Player 2</p>
               )}

@@ -2,10 +2,8 @@
 
 import React, { useState, useEffect } from 'react';
 
-export type VideoMeta = { id: string; name: string } | null;
-
 interface GoogleDrivePickerProps {
-  onVideoSelect: (videoMeta: VideoMeta, index: 1 | 2) => void;
+  onVideoSelect: (streamingUrl: string | null, index: 1 | 2) => void;
   selectedDayFolderId: string | null;
 }
 
@@ -47,9 +45,9 @@ const GoogleDrivePicker: React.FC<GoogleDrivePickerProps> = ({ onVideoSelect, se
       onVideoSelect(null, 1);
       onVideoSelect(null, 2);
     }
-  }, [selectedDayFolderId, onVideoSelect]);
+  }, [selectedDayFolderId]); // Keep onVideoSelect out to prevent infinite re-renders
 
-  const handleVideoClick = (fileId: string, fileName: string) => {
+  const handleVideoClick = (fileId: string) => {
     setWarningMsg(null);
 
     // Deselect logic
@@ -64,13 +62,15 @@ const GoogleDrivePicker: React.FC<GoogleDrivePickerProps> = ({ onVideoSelect, se
       return;
     }
 
-    // Select logic
+    // Select logic: Pass the streaming URL immediately
+    const streamingUrl = `/api/gdrive/download?fileId=${fileId}`;
+
     if (!selectedVideo1) {
       setSelectedVideo1(fileId);
-      onVideoSelect({ id: fileId, name: fileName }, 1);
+      onVideoSelect(streamingUrl, 1);
     } else if (!selectedVideo2) {
       setSelectedVideo2(fileId);
-      onVideoSelect({ id: fileId, name: fileName }, 2);
+      onVideoSelect(streamingUrl, 2);
     } else {
       // Both slots full
       setWarningMsg("Both video slots are full. Deselect a video first by clicking on it again.");
@@ -124,13 +124,12 @@ const GoogleDrivePicker: React.FC<GoogleDrivePickerProps> = ({ onVideoSelect, se
             return (
                 <div 
                     key={video.id} 
-                    onClick={() => handleVideoClick(video.id, video.name)} 
+                    onClick={() => handleVideoClick(video.id)} 
                     className={`relative cursor-pointer border-2 rounded-lg bg-gray-800 flex flex-col items-center justify-center p-2 transition-all ${borderClass}`}
                 >
-                    {/* Thumbnail placeholder if no thumbnailLink, else show thumbnail */}
                     <div className="w-full aspect-video bg-gray-900 rounded flex items-center justify-center mb-2 overflow-hidden">
                         {video.thumbnailLink ? (
-                            <img src={video.thumbnailLink} alt={video.name} className="object-cover w-full h-full" />
+                            <img src={`/api/gdrive/thumbnail?fileId=${video.id}`} alt={video.name} className="object-cover w-full h-full" loading="lazy" />
                         ) : (
                             <span className="text-gray-500">No Thumb</span>
                         )}
