@@ -29,19 +29,27 @@ function ComparePageContent() {
   const [syncsV1, setSyncsV1] = useState<number[]>([]);
   const [syncsV2, setSyncsV2] = useState<number[]>([]);
 
-  const [accessToken, setAccessToken] = useState<string | null>(null);
   const [selectedDayFolderId, setSelectedDayFolderId] = useState<string | null>(null);
   const rootFolderId = "1VwYiffrhaG29uaCbb23eSJ9hV7gMzxvV";
 
-  const handleDaySelect = (folderId: string, token: string) => {
+  // Cleanup blob URLs on unmount to prevent memory leaks
+  useEffect(() => {
+    return () => {
+      if (videoSrc1 && videoSrc1.startsWith('blob:')) URL.revokeObjectURL(videoSrc1);
+      if (videoSrc2 && videoSrc2.startsWith('blob:')) URL.revokeObjectURL(videoSrc2);
+    };
+  }, [videoSrc1, videoSrc2]);
+
+  const handleDaySelect = (folderId: string) => {
     setSelectedDayFolderId(folderId);
-    setAccessToken(token);
   };
 
-  const handleVideoSelect = (blobUrl: string) => {
-    if (!videoSrc1) {
+  const handleVideoSelect = (blobUrl: string | null, index: 1 | 2) => {
+    if (index === 1) {
+      if (videoSrc1 && videoSrc1.startsWith('blob:')) URL.revokeObjectURL(videoSrc1);
       setVideoSrc1(blobUrl);
     } else {
+      if (videoSrc2 && videoSrc2.startsWith('blob:')) URL.revokeObjectURL(videoSrc2);
       setVideoSrc2(blobUrl);
     }
   };
@@ -51,8 +59,10 @@ function ComparePageContent() {
     if (file) {
       const url = URL.createObjectURL(file);
       if (videoNumber === 1) {
+        if (videoSrc1 && videoSrc1.startsWith('blob:')) URL.revokeObjectURL(videoSrc1);
         setVideoSrc1(url);
       } else {
+        if (videoSrc2 && videoSrc2.startsWith('blob:')) URL.revokeObjectURL(videoSrc2);
         setVideoSrc2(url);
       }
     }
@@ -190,7 +200,7 @@ function ComparePageContent() {
         <CalendarView onDaySelect={handleDaySelect} rootFolderId={rootFolderId} />
       </div>
       
-      <GoogleDrivePicker onVideoSelect={handleVideoSelect} accessToken={accessToken} selectedDayFolderId={selectedDayFolderId} />
+      <GoogleDrivePicker onVideoSelect={handleVideoSelect} selectedDayFolderId={selectedDayFolderId} />
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-8">
         <div className="p-4 bg-gray-800 rounded-lg border border-gray-700">

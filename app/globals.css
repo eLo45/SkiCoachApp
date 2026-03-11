@@ -3,14 +3,76 @@
 @tailwind utilities;
 
 .react-calendar {
-  background-color: #f0f0f0;
-  border: 1px solid #ccc;
-  border-radius: 5px;
+  background-color: #d1d5db; /* Tailwind gray-300 */
+  border: 1px solid #9ca3af; /* Tailwind gray-400 */
+  border-radius: 8px;
+  color: black;
+  font-family: inherit;
+  padding: 10px;
 }
 
-.highlight {
-  background-color: #e6e6fa;
-  border-radius: 50%;
+.react-calendar button {
+  color: black !important; /* Force all text to be black, overriding weekend defaults */
+}
+
+.react-calendar__navigation button {
+  color: black !important;
+  font-weight: bold;
+}
+
+.react-calendar__navigation button:enabled:hover,
+.react-calendar__navigation button:enabled:focus {
+  background-color: #9ca3af;
+}
+
+.react-calendar__month-view__weekdays__weekday {
+  color: black;
+  font-weight: bold;
+  text-decoration: none;
+}
+
+.react-calendar__month-view__weekdays__weekday abbr {
+  text-decoration: none;
+}
+
+/* Force weekend text to remain black */
+.react-calendar__month-view__days__day--weekend {
+  color: black !important; 
+}
+
+/* Highlighted dates (dates with folders) */
+.react-calendar .highlight {
+  color: #dc2626 !important; /* Tailwind red-600 */
+  font-weight: bold;
+  background-color: transparent; /* Remove old lavender background */
+  border-radius: 0;
+}
+
+/* Hover state for all days */
+.react-calendar__tile:enabled:hover,
+.react-calendar__tile:enabled:focus {
+  background-color: #9ca3af;
+  border-radius: 4px;
+}
+
+/* Currently active/selected date */
+.react-calendar__tile--active,
+.react-calendar__tile--active:enabled:hover,
+.react-calendar__tile--active:enabled:focus {
+  background-color: black !important;
+  color: white !important;
+  border-radius: 4px;
+}
+
+/* Ensure highlight text is legible if it is the active date */
+.react-calendar__tile--active.highlight {
+    color: #ef4444 !important; /* Tailwind red-500, slightly brighter for dark bg */
+}
+
+.react-calendar__tile--now {
+    background: transparent;
+    border: 1px solid black;
+    border-radius: 4px;
 }
 
 :root {
