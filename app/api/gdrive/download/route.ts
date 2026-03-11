@@ -37,8 +37,9 @@ export async function GET(req: NextRequest) {
     // Copy essential headers for video streaming
     const headersToProxy = ['content-type', 'content-length', 'content-range', 'accept-ranges'];
     headersToProxy.forEach(header => {
-      if (driveResponse.headers[header]) {
-        response.headers.set(header, driveResponse.headers[header]);
+      const value = driveResponse.headers[header];
+      if (value) {
+        response.headers.set(header, Array.isArray(value) ? value.join(', ') : value);
       }
     });
 
