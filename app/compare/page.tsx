@@ -1,14 +1,12 @@
 'use client';
 
 import React, { useState, useRef, ChangeEvent, useEffect, useCallback } from 'react';
-import { useSession, signIn, signOut } from 'next-auth/react';
 import TimelineSync from '@/components/TimelineSync';
 import Link from 'next/link';
 import GoogleDrivePicker from '@/components/GoogleDrivePicker';
 import CalendarView from '@/components/CalendarView';
 
 function ComparePageContent() {
-  // ... (all the existing state and functions from ComparePage)
   // Video sources
   const [videoSrc1, setVideoSrc1] = useState<string | null>(null);
   const [videoSrc2, setVideoSrc2] = useState<string | null>(null);
@@ -92,12 +90,10 @@ function ComparePageContent() {
       const newPoint = video1Ref.current.currentTime;
       setSyncPoint1(newPoint);
       newSyncPoint1 = newPoint;
-      console.log(`Sync point 1 marked at: ${newPoint}`);
     } else if (videoNumber === 2 && video2Ref.current) {
       const newPoint = video2Ref.current.currentTime;
       setSyncPoint2(newPoint);
       newSyncPoint2 = newPoint;
-      console.log(`Sync point 2 marked at: ${newPoint}`);
     }
 
     if (newSyncPoint1 !== null && newSyncPoint2 !== null && duration1 > 0 && duration2 > 0) {
@@ -107,8 +103,6 @@ function ComparePageContent() {
       
       if (newOffsetPercentage < 0) newOffsetPercentage = 0;
       if (newOffsetPercentage > 75) newOffsetPercentage = 75;
-
-      console.log(`Syncing video 2. New offset: ${newOffsetPercentage}%`);
       setOffset2(newOffsetPercentage);
     }
   };
@@ -124,14 +118,13 @@ function ComparePageContent() {
     const video1TargetTime = (duration1 * (offset1 / 100)) + elapsed;
     const video2TargetTime = (duration2 * (offset2 / 100)) + elapsed;
 
-    if (Math.abs(video1Ref.current.currentTime - video1TargetTime) > 0.2) {
+    if (Math.abs(video1Ref.current.currentTime - video1TargetTime) > 0.1) {
         video1Ref.current.currentTime = video1TargetTime;
     }
-    if (Math.abs(video2Ref.current.currentTime - video2TargetTime) > 0.2) {
+    if (Math.abs(video2Ref.current.currentTime - video2TargetTime) > 0.1) {
         video2Ref.current.currentTime = video2TargetTime;
     }
     
-    // Stop if either video has ended
     if (video1Ref.current.ended || video2Ref.current.ended) {
         setIsPlaying(false);
         return;
@@ -141,63 +134,61 @@ function ComparePageContent() {
   }, [isPlaying, offset1, offset2, duration1, duration2]);
 
   const handleReset = () => {
-    if (!video1Ref.current || !video2Ref.current) return;
-
     setIsPlaying(false);
     if (animationFrameId.current) {
       cancelAnimationFrame(animationFrameId.current);
     }
-    video1Ref.current.pause();
-    video2Ref.current.pause();
-    
-    if (duration1 > 0) {
-      video1Ref.current.currentTime = duration1 * (offset1 / 100);
+
+    if (video1Ref.current) {
+      video1Ref.current.pause();
+      if (duration1 > 0) {
+        video1Ref.current.currentTime = duration1 * (offset1 / 100);
+      }
     }
-    if (duration2 > 0) {
-      video2Ref.current.currentTime = duration2 * (offset2 / 100);
+    
+    if (video2Ref.current) {
+      video2Ref.current.pause();
+      if (duration2 > 0) {
+        video2Ref.current.currentTime = duration2 * (offset2 / 100);
+      }
     }
   };
 
   const handlePlayPause = () => {
     if (!video1Ref.current || !video2Ref.current) return;
 
-    const newIsPlaying = !isPlaying;
-    setIsPlaying(newIsPlaying);
-
-    if (newIsPlaying) {
-      // If videos have ended, reset them before playing again.
-      if (video1Ref.current.ended || video2Ref.current.ended) {
-        handleReset(); // Use the reset function to go to start
-        playbackStartTimeRef.current = performance.now();
-      } else {
-        // This is the RESUME logic. Adjust the master clock to account for the time that passed while paused.
-        const elapsedWhilePaused = video1Ref.current.currentTime - (duration1 * (offset1 / 100));
-        playbackStartTimeRef.current = performance.now() - (elapsedWhilePaused * 1000);
-      }
-      
-      video1Ref.current.play();
-      video2Ref.current.play();
-      animationFrameId.current = requestAnimationFrame(syncTime);
-
-    } else {
-      // This is the PAUSE logic.
+    if (isPlaying) {
+      // PAUSE logic
+      setIsPlaying(false);
       video1Ref.current.pause();
       video2Ref.current.pause();
       if (animationFrameId.current) {
         cancelAnimationFrame(animationFrameId.current);
       }
+    } else {
+      // PLAY logic
+      if (video1Ref.current.ended || video2Ref.current.ended) {
+        handleReset();
+        playbackStartTimeRef.current = performance.now();
+      } else {
+        // RESUME logic - calibrate clock to current playhead
+        const currentElapsed = video1Ref.current.currentTime - (duration1 * (offset1 / 100));
+        playbackStartTimeRef.current = performance.now() - (currentElapsed * 1000);
+      }
+      
+      setIsPlaying(true);
+      video1Ref.current.play();
+      video2Ref.current.play();
+      animationFrameId.current = requestAnimationFrame(syncTime);
     }
   };
 
   return (
     <div className="w-full max-w-7xl">
       <div className="flex justify-between items-center mb-8">
-        <h1 className="text-4xl font-bold text-center">
+        <h1 className="text-4xl font-bold text-center w-full">
           Athlete Video Comparison
         </h1>
-        <button onClick={() => signOut()} className="bg-red-600 hover:bg-red-700 text-white font-bold py-2 px-4 rounded-lg">
-          Sign Out
-        </button>
       </div>
 
       <div className="my-4 p-4 border border-gray-700 rounded-lg">
