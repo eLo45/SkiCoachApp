@@ -14,7 +14,6 @@ function ComparePageContent() {
   // Playback state
   const [isPlaying, setIsPlaying] = useState(false);
   const animationFrameId = useRef<number>();
-  const playbackStartTimeRef = useRef<number>(0); // For master clock
 
   // Video refs
   const video1Ref = useRef<HTMLVideoElement>(null);
@@ -109,20 +108,21 @@ function ComparePageContent() {
   
   const syncTime = useCallback(() => {
     if (!isPlaying || !video1Ref.current || !video2Ref.current || !duration1 || !duration2) {
-        if (animationFrameId.current) cancelAnimationFrame(animationFrameId.current);
         return;
     };
 
-    const elapsed = (performance.now() - playbackStartTimeRef.current) / 1000;
+    // Use Video 1 as the Master
+    const v1Time = video1Ref.current.currentTime;
+    const v1StartOffset = duration1 * (offset1 / 100);
+    const v2StartOffset = duration2 * (offset2 / 100);
     
-    const video1TargetTime = (duration1 * (offset1 / 100)) + elapsed;
-    const video2TargetTime = (duration2 * (offset2 / 100)) + elapsed;
+    // Relative time in the playback (seconds since their respective start offsets)
+    const relativeTime = v1Time - v1StartOffset;
+    const v2TargetTime = v2StartOffset + relativeTime;
 
-    if (Math.abs(video1Ref.current.currentTime - video1TargetTime) > 0.1) {
-        video1Ref.current.currentTime = video1TargetTime;
-    }
-    if (Math.abs(video2Ref.current.currentTime - video2TargetTime) > 0.1) {
-        video2Ref.current.currentTime = video2TargetTime;
+    // Only sync if they drift by more than 0.05s
+    if (Math.abs(video2Ref.current.currentTime - v2TargetTime) > 0.05) {
+        video2Ref.current.currentTime = v2TargetTime;
     }
     
     if (video1Ref.current.ended || video2Ref.current.ended) {
@@ -135,22 +135,15 @@ function ComparePageContent() {
 
   const handleReset = () => {
     setIsPlaying(false);
-    if (animationFrameId.current) {
-      cancelAnimationFrame(animationFrameId.current);
-    }
+    if (animationFrameId.current) cancelAnimationFrame(animationFrameId.current);
 
     if (video1Ref.current) {
       video1Ref.current.pause();
-      if (duration1 > 0) {
-        video1Ref.current.currentTime = duration1 * (offset1 / 100);
-      }
+      video1Ref.current.currentTime = duration1 * (offset1 / 100);
     }
-    
     if (video2Ref.current) {
       video2Ref.current.pause();
-      if (duration2 > 0) {
-        video2Ref.current.currentTime = duration2 * (offset2 / 100);
-      }
+      video2Ref.current.currentTime = duration2 * (offset2 / 100);
     }
   };
 
@@ -158,29 +151,24 @@ function ComparePageContent() {
     if (!video1Ref.current || !video2Ref.current) return;
 
     if (isPlaying) {
-      // PAUSE logic
       setIsPlaying(false);
       video1Ref.current.pause();
       video2Ref.current.pause();
-      if (animationFrameId.current) {
-        cancelAnimationFrame(animationFrameId.current);
-      }
+      if (animationFrameId.current) cancelAnimationFrame(animationFrameId.current);
     } else {
-      // PLAY logic
-      if (video1Ref.current.ended || video2Ref.current.ended) {
-        handleReset();
-        playbackStartTimeRef.current = performance.now();
-      } else {
-        // RESUME logic - calibrate clock to current playhead
-        const currentElapsed = video1Ref.current.currentTime - (duration1 * (offset1 / 100));
-        playbackStartTimeRef.current = performance.now() - (currentElapsed * 1000);
-      }
-      
       setIsPlaying(true);
       video1Ref.current.play();
       video2Ref.current.play();
       animationFrameId.current = requestAnimationFrame(syncTime);
     }
+  };
+
+  const stepFrame = (direction: 1 | -1) => {
+    if (isPlaying || !video1Ref.current || !video2Ref.current) return;
+    
+    const frameTime = 1 / 30; // Assuming 30fps
+    video1Ref.current.currentTime += direction * frameTime;
+    video2Ref.current.currentTime += direction * frameTime;
   };
 
   return (
@@ -237,10 +225,25 @@ function ComparePageContent() {
         </div>
       </div>
       
-      <div className="w-full max-w-4xl mx-auto my-8 text-center flex justify-center gap-4">
-          <button onClick={handlePlayPause} className="bg-green-600 hover:bg-green-700 text-white font-bold py-2 px-6 rounded-lg text-lg transition-colors w-32">
-              {isPlaying ? 'Pause' : 'Play'}
-          </button>
+      <div className="w-full max-w-4xl mx-auto my-8 flex flex-col items-center gap-4">
+          <div className="flex justify-center gap-4">
+            {!isPlaying && (
+              <button onClick={() => stepFrame(-1)} className="bg-gray-700 hover:bg-gray-600 text-white font-bold py-2 px-4 rounded-lg text-lg transition-colors">
+                &larr; Prev Frame
+              </button>
+            )}
+            
+            <button onClick={handlePlayPause} className={`${isPlaying ? 'bg-orange-600 hover:bg-orange-700' : 'bg-green-600 hover:bg-green-700'} text-white font-bold py-2 px-6 rounded-lg text-lg transition-colors w-32`}>
+                {isPlaying ? 'Pause' : 'Play'}
+            </button>
+
+            {!isPlaying && (
+              <button onClick={() => stepFrame(1)} className="bg-gray-700 hover:bg-gray-600 text-white font-bold py-2 px-4 rounded-lg text-lg transition-colors">
+                Next Frame &rarr;
+              </button>
+            )}
+          </div>
+          
           <button onClick={handleReset} className="bg-gray-600 hover:bg-gray-700 text-white font-bold py-2 px-6 rounded-lg text-lg transition-colors w-32">
               Reset
           </button>
