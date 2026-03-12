@@ -29,20 +29,10 @@ export async function GET(req: NextRequest) {
     let start = 0;
     let end = fileSize - 1;
 
-    // IMPORTANT: Cloud Run limits non-chunked responses to 32MB. 
-    // We will artificially clamp the maximum chunk size to 5MB to ensure it streams perfectly 
-    // without hitting infrastructure limits, forcing the browser to ask for the next piece.
-    const CHUNK_SIZE_LIMIT = 5 * 1024 * 1024; // 5MB
-
     if (rangeHeader) {
       const parts = rangeHeader.replace(/bytes=/, "").split("-");
       start = parseInt(parts[0], 10);
       end = parts[1] ? parseInt(parts[1], 10) : fileSize - 1;
-    }
-    
-    // Clamp the end to prevent sending more than 5MB at once
-    if (end - start >= CHUNK_SIZE_LIMIT) {
-        end = start + CHUNK_SIZE_LIMIT - 1;
     }
     
     // Ensure we don't go past the actual file size

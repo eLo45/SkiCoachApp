@@ -37,6 +37,9 @@ function SideBySidePageContent() {
 
   const [isVideo1Loaded, setIsVideo1Loaded] = useState(false);
   const [isVideo2Loaded, setIsVideo2Loaded] = useState(false);
+  
+  const [downloadProgress1, setDownloadProgress1] = useState<number | null>(null);
+  const [downloadProgress2, setDownloadProgress2] = useState<number | null>(null);
 
   // Cleanup blob URLs on unmount to prevent memory leaks
   useEffect(() => {
@@ -51,33 +54,62 @@ function SideBySidePageContent() {
   };
 
   const handleVideoSelect = useCallback((streamingUrl: string | null, index: 1 | 2, fileName?: string) => {
-    if (index === 1) {
-      setIsVideo1Loaded(false);
-      // Clear local blobs if we are switching sources to prevent leaks
-      if (videoSrc1 && videoSrc1.startsWith('blob:')) URL.revokeObjectURL(videoSrc1);
-      setVideoSrc1(streamingUrl);
-      if (fileName) setStagedDriveVideo1({name: fileName});
-      else setStagedDriveVideo1(null);
-      
-      // Auto-load player
-      if (streamingUrl) {
-          setTimeout(() => {
-              if (video1Ref.current) video1Ref.current.load();
-          }, 50);
-      }
-    } else {
-      setIsVideo2Loaded(false);
-      if (videoSrc2 && videoSrc2.startsWith('blob:')) URL.revokeObjectURL(videoSrc2);
-      setVideoSrc2(streamingUrl);
-      if (fileName) setStagedDriveVideo2({name: fileName});
-      else setStagedDriveVideo2(null);
-      
-      if (streamingUrl) {
-          setTimeout(() => {
-              if (video2Ref.current) video2Ref.current.load();
-          }, 50);
-      }
+    const setProgress = index === 1 ? setDownloadProgress1 : setDownloadProgress2;
+    const setSrc = index === 1 ? setVideoSrc1 : setVideoSrc2;
+    const setLoaded = index === 1 ? setIsVideo1Loaded : setIsVideo2Loaded;
+    const setStaged = index === 1 ? setStagedDriveVideo1 : setStagedDriveVideo2;
+    const currentSrc = index === 1 ? videoSrc1 : videoSrc2;
+    const videoRef = index === 1 ? video1Ref : video2Ref;
+
+    setLoaded(false);
+    setProgress(null);
+    if (fileName) setStaged({name: fileName});
+    else setStaged(null);
+
+    if (!streamingUrl) {
+      if (currentSrc && currentSrc.startsWith('blob:')) URL.revokeObjectURL(currentSrc);
+      setSrc(null);
+      return;
     }
+
+    // Use XMLHttpRequest to download the file directly into a blob so we can show a progress bar
+    // and guarantee the file is 100% local before the browser tries to play it, avoiding stuttering.
+    setProgress(0);
+    
+    const xhr = new XMLHttpRequest();
+    xhr.open('GET', streamingUrl, true);
+    xhr.responseType = 'blob';
+
+    xhr.onprogress = (event) => {
+      if (event.lengthComputable) {
+        const percentComplete = (event.loaded / event.total) * 100;
+        setProgress(Math.round(percentComplete));
+      }
+    };
+
+    xhr.onload = () => {
+      if (xhr.status === 200 || xhr.status === 206) {
+        if (currentSrc && currentSrc.startsWith('blob:')) URL.revokeObjectURL(currentSrc);
+        const blobUrl = URL.createObjectURL(xhr.response);
+        setSrc(blobUrl);
+        setProgress(null);
+        
+        setTimeout(() => {
+            if (videoRef.current) videoRef.current.load();
+        }, 50);
+      } else {
+        console.error('Failed to download video blob', xhr.statusText);
+        setProgress(null);
+      }
+    };
+
+    xhr.onerror = () => {
+      console.error('XHR network error during video download');
+      setProgress(null);
+    };
+
+    xhr.send();
+    
   }, [videoSrc1, videoSrc2]);
 
   const handleFileChange = (e: ChangeEvent<HTMLInputElement>, videoNumber: 1 | 2) => {
@@ -244,7 +276,21 @@ function SideBySidePageContent() {
                 <input type="file" accept="video/*" onChange={(e) => handleFileChange(e, 1)} className="hidden" />
              </label>
           </div>
-          <div className="aspect-video bg-gray-800 rounded-lg flex items-center justify-center border border-gray-700 overflow-hidden">
+          
+          {downloadProgress1 !== null && (
+              <div className="w-full bg-gray-700 rounded-full h-2.5 mb-2">
+                  <div className="bg-blue-500 h-2.5 rounded-full transition-all duration-300" style={{ width: `${downloadProgress1}%` }}></div>
+              </div>
+          )}
+
+          <div className="aspect-video bg-gray-800 rounded-lg flex items-center justify-center border border-gray-700 overflow-hidden relative">
+              {downloadProgress1 !== null && (
+                  <div className="absolute inset-0 bg-black/60 flex flex-col items-center justify-center z-10">
+                      <div className="w-8 h-8 border-4 border-blue-500 border-t-transparent rounded-full animate-spin mb-2"></div>
+                      <span className="text-white font-bold">{downloadProgress1}% Downloaded</span>
+                      <span className="text-xs text-gray-300">Caching for smooth playback</span>
+                  </div>
+              )}
               {videoSrc1 ? (
               <video key={videoSrc1} ref={video1Ref} src={videoSrc1} preload="metadata" onCanPlayThrough={() => setIsVideo1Loaded(true)} onLoadedMetadata={() => handleLoadedMetadata(1)} onTimeUpdate={() => { if (video1Ref.current && !isPlaying) setCurrentTime1(video1Ref.current.currentTime); }} className="w-full h-full" controls={false} muted/>
               ) : (
@@ -274,7 +320,21 @@ function SideBySidePageContent() {
                 <input type="file" accept="video/*" onChange={(e) => handleFileChange(e, 2)} className="hidden" />
              </label>
           </div>
-          <div className="aspect-video bg-gray-800 rounded-lg flex items-center justify-center border border-gray-700 overflow-hidden">
+          
+          {downloadProgress2 !== null && (
+              <div className="w-full bg-gray-700 rounded-full h-2.5 mb-2">
+                  <div className="bg-green-500 h-2.5 rounded-full transition-all duration-300" style={{ width: `${downloadProgress2}%` }}></div>
+              </div>
+          )}
+
+          <div className="aspect-video bg-gray-800 rounded-lg flex items-center justify-center border border-gray-700 overflow-hidden relative">
+              {downloadProgress2 !== null && (
+                  <div className="absolute inset-0 bg-black/60 flex flex-col items-center justify-center z-10">
+                      <div className="w-8 h-8 border-4 border-green-500 border-t-transparent rounded-full animate-spin mb-2"></div>
+                      <span className="text-white font-bold">{downloadProgress2}% Downloaded</span>
+                      <span className="text-xs text-gray-300">Caching for smooth playback</span>
+                  </div>
+              )}
               {videoSrc2 ? (
               <video key={videoSrc2} ref={video2Ref} src={videoSrc2} preload="metadata" onCanPlayThrough={() => setIsVideo2Loaded(true)} onLoadedMetadata={() => handleLoadedMetadata(2)} onTimeUpdate={() => { if (video2Ref.current && !isPlaying) setCurrentTime2(video2Ref.current.currentTime); }} className="w-full h-full" controls={false} muted/>
               ) : (
