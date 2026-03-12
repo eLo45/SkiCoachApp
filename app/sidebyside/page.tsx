@@ -53,7 +53,7 @@ function SideBySidePageContent() {
     setSelectedDayFolderId(folderId);
   };
 
-  const handleVideoSelect = useCallback((streamingUrl: string | null, index: 1 | 2, fileName?: string) => {
+  const handleVideoSelect = useCallback(async (streamingUrl: string | null, index: 1 | 2, fileName?: string) => {
     const setProgress = index === 1 ? setDownloadProgress1 : setDownloadProgress2;
     const setSrc = index === 1 ? setVideoSrc1 : setVideoSrc2;
     const setLoaded = index === 1 ? setIsVideo1Loaded : setIsVideo2Loaded;
@@ -72,44 +72,64 @@ function SideBySidePageContent() {
       return;
     }
 
-    // Use XMLHttpRequest to download the file directly into a blob so we can show a progress bar
-    // and guarantee the file is 100% local before the browser tries to play it, avoiding stuttering.
     setProgress(0);
-    
-    const xhr = new XMLHttpRequest();
-    xhr.open('GET', streamingUrl, true);
-    xhr.responseType = 'blob';
 
-    xhr.onprogress = (event) => {
-      if (event.lengthComputable) {
-        const percentComplete = (event.loaded / event.total) * 100;
-        setProgress(Math.round(percentComplete));
-      }
-    };
+    try {
+      const fileId = new URL(streamingUrl, window.location.origin).searchParams.get('fileId');
+      if (!fileId) throw new Error("Invalid file ID");
 
-    xhr.onload = () => {
-      if (xhr.status === 200 || xhr.status === 206) {
-        if (currentSrc && currentSrc.startsWith('blob:')) URL.revokeObjectURL(currentSrc);
-        const blobUrl = URL.createObjectURL(xhr.response);
-        setSrc(blobUrl);
-        setProgress(null);
+      const CHUNK_SIZE = 10 * 1024 * 1024; // 10MB chunks to safely bypass Cloud Run's 32MB limit
+      let start = 0;
+      let totalSize = 0;
+      const chunks: ArrayBuffer[] = [];
+
+      while (true) {
+        const end = start + CHUNK_SIZE - 1;
+        const response = await fetch(`/api/gdrive/download?fileId=${fileId}`, {
+          headers: { 'Range': `bytes=${start}-${end}` }
+        });
+
+        if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
+
+        const contentRange = response.headers.get('Content-Range');
+        if (contentRange) {
+            const match = contentRange.match(/\/(\d+)/);
+            if (match) totalSize = parseInt(match[1], 10);
+        }
+
+        const arrayBuffer = await response.arrayBuffer();
+        chunks.push(arrayBuffer);
+
+        const currentTotalLoaded = chunks.reduce((acc, c) => acc + c.byteLength, 0);
         
-        setTimeout(() => {
-            if (videoRef.current) videoRef.current.load();
-        }, 50);
-      } else {
-        console.error('Failed to download video blob', xhr.statusText);
-        setProgress(null);
+        if (totalSize > 0) {
+            setProgress(Math.round((currentTotalLoaded / totalSize) * 100));
+        }
+
+        // If the server didn't return partial content, or we have downloaded the whole file, stop.
+        if (response.status !== 206 || (totalSize > 0 && currentTotalLoaded >= totalSize) || arrayBuffer.byteLength === 0) {
+            break;
+        }
+
+        start += arrayBuffer.byteLength;
       }
-    };
 
-    xhr.onerror = () => {
-      console.error('XHR network error during video download');
+      if (currentSrc && currentSrc.startsWith('blob:')) URL.revokeObjectURL(currentSrc);
+      const finalBlob = new Blob(chunks, { type: 'video/mp4' });
+      const blobUrl = URL.createObjectURL(finalBlob);
+      
+      setSrc(blobUrl);
       setProgress(null);
-    };
+      
+      setTimeout(() => {
+          if (videoRef.current) videoRef.current.load();
+      }, 50);
 
-    xhr.send();
-    
+    } catch (err: any) {
+      console.error('Error downloading video in chunks:', err);
+      setProgress(null);
+      alert(`Download failed. Please try again. (${err.message})`);
+    }
   }, [videoSrc1, videoSrc2]);
 
   const handleFileChange = (e: ChangeEvent<HTMLInputElement>, videoNumber: 1 | 2) => {
