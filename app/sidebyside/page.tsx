@@ -41,8 +41,16 @@ function SideBySidePageContent() {
   const [isStaging1, setIsStaging1] = useState(false);
   const [isStaging2, setIsStaging2] = useState(false);
   
+  
   const [downloadProgress1, setDownloadProgress1] = useState<number | null>(null);
   const [downloadProgress2, setDownloadProgress2] = useState<number | null>(null);
+
+  const [isQueued1, setIsQueued1] = useState(false);
+  const [isQueued2, setIsQueued2] = useState(false);
+
+  // Download Queue Manager
+  const downloadQueueRef = useRef<{fileId: string, index: 1 | 2, fileName?: string}[]>([]);
+  const isDownloadingRef = useRef<boolean>(false);
 
   const abortController1Ref = useRef<AbortController | null>(null);
   const abortController2Ref = useRef<AbortController | null>(null);
@@ -61,101 +69,132 @@ function SideBySidePageContent() {
     setSelectedDayFolderId(folderId);
   };
 
-  const handleVideoSelect = useCallback(async (fileId: string | null, index: 1 | 2, fileName?: string) => {
-    const setProgress = index === 1 ? setDownloadProgress1 : setDownloadProgress2;
-    const setIsStaging = index === 1 ? setIsStaging1 : setIsStaging2;
-    const setSrc = index === 1 ? setVideoSrc1 : setVideoSrc2;
-    const setLoaded = index === 1 ? setIsVideo1Loaded : setIsVideo2Loaded;
-    const setStaged = index === 1 ? setStagedDriveVideo1 : setStagedDriveVideo2;
-    const currentSrc = index === 1 ? videoSrc1 : videoSrc2;
-    const videoRef = index === 1 ? video1Ref : video2Ref;
-    const abortRef = index === 1 ? abortController1Ref : abortController2Ref;
+  
+  const processDownloadQueue = useCallback(async () => {
+      if (isDownloadingRef.current || downloadQueueRef.current.length === 0) return;
 
-    // Abort any existing download for this slot to prevent network exhaustion
+      isDownloadingRef.current = true;
+      const task = downloadQueueRef.current.shift()!;
+      
+      const { fileId, index, fileName } = task;
+      
+      const setProgress = index === 1 ? setDownloadProgress1 : setDownloadProgress2;
+      const setIsQueued = index === 1 ? setIsQueued1 : setIsQueued2;
+      const setSrc = index === 1 ? setVideoSrc1 : setVideoSrc2;
+      const setLoaded = index === 1 ? setIsVideo1Loaded : setIsVideo2Loaded;
+      const currentSrc = index === 1 ? videoSrc1 : videoSrc2;
+      const videoRef = index === 1 ? video1Ref : video2Ref;
+      const abortRef = index === 1 ? abortController1Ref : abortController2Ref;
+
+      setIsQueued(false);
+      setProgress(0);
+
+      try {
+        const CHUNK_SIZE = 10 * 1024 * 1024; 
+        let start = 0;
+        let totalSize = 0;
+        const chunks: ArrayBuffer[] = [];
+
+        while (true) {
+          if (abortRef.current?.signal.aborted) throw new Error('Download cancelled');
+
+          const end = start + CHUNK_SIZE - 1;
+          const response = await fetch(`/api/gdrive/download?fileId=${fileId}`, {
+            headers: { 'Range': `bytes=${start}-${end}` }
+          });
+
+          if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
+
+          const contentRange = response.headers.get('Content-Range');
+          if (contentRange) {
+              const match = contentRange.match(/\/(\d+)/);
+              if (match) totalSize = parseInt(match[1], 10);
+          }
+
+          const arrayBuffer = await response.arrayBuffer();
+          if (abortRef.current?.signal.aborted) throw new Error('Download cancelled');
+
+          chunks.push(arrayBuffer);
+
+          const currentTotalLoaded = chunks.reduce((acc, c) => acc + c.byteLength, 0);
+          
+          if (totalSize > 0) {
+              setProgress(Math.round((currentTotalLoaded / totalSize) * 100));
+          }
+
+          if (response.status !== 206 || (totalSize > 0 && currentTotalLoaded >= totalSize) || arrayBuffer.byteLength === 0) {
+              break;
+          }
+
+          start += arrayBuffer.byteLength;
+        }
+
+        if (currentSrc && currentSrc.startsWith('blob:')) URL.revokeObjectURL(currentSrc);
+        const finalBlob = new Blob(chunks, { type: 'video/mp4' });
+        const blobUrl = URL.createObjectURL(finalBlob);
+        
+        setSrc(blobUrl);
+        setProgress(null);
+        
+        setTimeout(() => {
+            if (videoRef.current) videoRef.current.load();
+        }, 50);
+
+      } catch (err: any) {
+        if (err.message !== 'Download cancelled') {
+            console.error('Error downloading video in chunks:', err);
+            alert(`Download failed. Please try again. (${err.message})`);
+        }
+        setProgress(null);
+      } finally {
+        isDownloadingRef.current = false;
+        // Process next item in queue if it exists
+        processDownloadQueue();
+      }
+  }, [videoSrc1, videoSrc2]);
+
+  const handleVideoSelect = useCallback((fileId: string | null, index: 1 | 2, fileName?: string) => {
+    const setStaged = index === 1 ? setStagedDriveVideo1 : setStagedDriveVideo2;
+    const setSrc = index === 1 ? setVideoSrc1 : setVideoSrc2;
+    const currentSrc = index === 1 ? videoSrc1 : videoSrc2;
+    const abortRef = index === 1 ? abortController1Ref : abortController2Ref;
+    const setIsQueued = index === 1 ? setIsQueued1 : setIsQueued2;
+    const setProgress = index === 1 ? setDownloadProgress1 : setDownloadProgress2;
+
+    if (fileName) setStaged({ name: fileName });
+    else setStaged(null);
+
+    // Abort existing downloads for this slot
     if (abortRef.current) {
         abortRef.current.abort();
     }
     abortRef.current = new AbortController();
 
-    setLoaded(false);
-    setProgress(null);
-    if (fileName) setStaged({ name: fileName });
-    else setStaged(null);
-
     if (!fileId) {
       if (currentSrc && currentSrc.startsWith('blob:')) URL.revokeObjectURL(currentSrc);
       setSrc(null);
-      setIsStaging(false);
+      setProgress(null);
+      setIsQueued(false);
+      
+      // Also remove this index from the queue if it was pending
+      downloadQueueRef.current = downloadQueueRef.current.filter(task => task.index !== index);
       return;
     }
+    
+    // Add to queue and trigger processor
+    setIsQueued(true);
+    setProgress(null); // Clear progress if it was running
+    
+    // Remove any existing pending tasks for this same slot so we don't download old clicks
+    downloadQueueRef.current = downloadQueueRef.current.filter(task => task.index !== index);
+    
+    downloadQueueRef.current.push({ fileId, index, fileName });
+    
+    // Start processing asynchronously
+    setTimeout(processDownloadQueue, 10);
+    
+  }, [processDownloadQueue, videoSrc1, videoSrc2]);
 
-    if (currentSrc && currentSrc.startsWith('blob:')) URL.revokeObjectURL(currentSrc);
-      
-    // Set staging to true to show the UI overlay while the backend copies from Drive to GCS
-    setIsStaging(true);
-
-    try {
-        const urlRes = await fetch(`/api/gdrive/download?fileId=${fileId}`);
-        if (!urlRes.ok) throw new Error('Failed to fetch streaming URL');
-        
-        const data = await urlRes.json();
-        if (!data.url) throw new Error('Invalid URL returned from proxy');
-        
-        setIsStaging(false); // Staging complete, file is now on GCS.
-        setProgress(0); // Start the download progress bar
-        
-        // Use XMLHttpRequest to download the file directly into a blob so we can show a progress bar
-        // and guarantee the file is 100% local before the browser tries to play it, avoiding stuttering.
-        const xhr = new XMLHttpRequest();
-        xhr.open('GET', data.url, true);
-        xhr.responseType = 'blob';
-
-        xhr.onprogress = (event) => {
-          if (event.lengthComputable) {
-            const percentComplete = (event.loaded / event.total) * 100;
-            setProgress(Math.round(percentComplete));
-          }
-        };
-
-        xhr.onload = () => {
-          if (xhr.status === 200 || xhr.status === 206) {
-            if (currentSrc && currentSrc.startsWith('blob:')) URL.revokeObjectURL(currentSrc);
-            const blobUrl = URL.createObjectURL(xhr.response);
-            setSrc(blobUrl);
-            setProgress(null);
-            
-            setTimeout(() => {
-                if (videoRef.current) videoRef.current.load();
-            }, 50);
-          } else {
-            console.error('Failed to download video blob', xhr.statusText);
-            setProgress(null);
-            alert("Failed to download video blob from Cloud Cache.");
-          }
-        };
-
-        xhr.onerror = () => {
-          console.error('XHR network error during video download');
-          setProgress(null);
-          alert("Network error downloading video.");
-        };
-
-        // Attach abort signal
-        abortRef.current.signal.addEventListener('abort', () => {
-            xhr.abort();
-            setProgress(null);
-        });
-
-        xhr.send();
-
-    } catch (e) {
-        console.error("Error setting up video stream:", e);
-        alert("Error loading video stream.");
-        setIsStaging(false);
-        setProgress(null);
-    }
-
-  }, [videoSrc1, videoSrc2]);
 
   const handleFileChange = (e: ChangeEvent<HTMLInputElement>, videoNumber: 1 | 2) => {
     const file = e.target.files?.[0];
