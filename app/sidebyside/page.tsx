@@ -69,6 +69,13 @@ function SideBySidePageContent() {
     const setStaged = index === 1 ? setStagedDriveVideo1 : setStagedDriveVideo2;
     const currentSrc = index === 1 ? videoSrc1 : videoSrc2;
     const videoRef = index === 1 ? video1Ref : video2Ref;
+    const abortRef = index === 1 ? abortController1Ref : abortController2Ref;
+
+    // Abort any existing download for this slot to prevent network exhaustion
+    if (abortRef.current) {
+        abortRef.current.abort();
+    }
+    abortRef.current = new AbortController();
 
     setLoaded(false);
     setProgress(null);
@@ -84,7 +91,7 @@ function SideBySidePageContent() {
 
     if (currentSrc && currentSrc.startsWith('blob:')) URL.revokeObjectURL(currentSrc);
       
-    // Set staging to true to show the UI overlay
+    // Set staging to true to show the UI overlay while the backend copies from Drive to GCS
     setIsStaging(true);
 
     try {
@@ -94,16 +101,58 @@ function SideBySidePageContent() {
         const data = await urlRes.json();
         if (!data.url) throw new Error('Invalid URL returned from proxy');
         
-        setSrc(data.url);
-          
-        setTimeout(() => {
-            if (videoRef.current) videoRef.current.load();
-        }, 50);
+        setIsStaging(false); // Staging complete, file is now on GCS.
+        setProgress(0); // Start the download progress bar
+        
+        // Use XMLHttpRequest to download the file directly into a blob so we can show a progress bar
+        // and guarantee the file is 100% local before the browser tries to play it, avoiding stuttering.
+        const xhr = new XMLHttpRequest();
+        xhr.open('GET', data.url, true);
+        xhr.responseType = 'blob';
+
+        xhr.onprogress = (event) => {
+          if (event.lengthComputable) {
+            const percentComplete = (event.loaded / event.total) * 100;
+            setProgress(Math.round(percentComplete));
+          }
+        };
+
+        xhr.onload = () => {
+          if (xhr.status === 200 || xhr.status === 206) {
+            if (currentSrc && currentSrc.startsWith('blob:')) URL.revokeObjectURL(currentSrc);
+            const blobUrl = URL.createObjectURL(xhr.response);
+            setSrc(blobUrl);
+            setProgress(null);
+            
+            setTimeout(() => {
+                if (videoRef.current) videoRef.current.load();
+            }, 50);
+          } else {
+            console.error('Failed to download video blob', xhr.statusText);
+            setProgress(null);
+            alert("Failed to download video blob from Cloud Cache.");
+          }
+        };
+
+        xhr.onerror = () => {
+          console.error('XHR network error during video download');
+          setProgress(null);
+          alert("Network error downloading video.");
+        };
+
+        // Attach abort signal
+        abortRef.current.signal.addEventListener('abort', () => {
+            xhr.abort();
+            setProgress(null);
+        });
+
+        xhr.send();
+
     } catch (e) {
         console.error("Error setting up video stream:", e);
         alert("Error loading video stream.");
-    } finally {
         setIsStaging(false);
+        setProgress(null);
     }
 
   }, [videoSrc1, videoSrc2]);
