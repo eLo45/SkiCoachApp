@@ -79,13 +79,24 @@ function SideBySidePageContent() {
 
     if (currentSrc && currentSrc.startsWith('blob:')) URL.revokeObjectURL(currentSrc);
       
-    // Use the direct Google Drive API with a public API key, completely bypassing Cloud Run and its 32MB payload limits.
-    const streamingUrl = `https://www.googleapis.com/drive/v3/files/${fileId}?alt=media&key=${process.env.NEXT_PUBLIC_GOOGLE_DRIVE_API_KEY}`;
-    setSrc(streamingUrl);
-      
-    setTimeout(() => {
-        if (videoRef.current) videoRef.current.load();
-    }, 50);
+    // We need to fetch the API key from the backend at runtime because NEXT_PUBLIC variables 
+    // injected via Cloud Run deployment flags are not available in the statically built client bundle.
+    try {
+        const tokenRes = await fetch('/api/gdrive/token');
+        if (!tokenRes.ok) throw new Error('Failed to fetch API key');
+        const { apiKey } = await tokenRes.json();
+        
+        if (!apiKey) throw new Error('API key missing from server');
+        
+        const streamingUrl = `https://www.googleapis.com/drive/v3/files/${fileId}?alt=media&key=${apiKey}`;
+        setSrc(streamingUrl);
+          
+        setTimeout(() => {
+            if (videoRef.current) videoRef.current.load();
+        }, 50);
+    } catch (e) {
+        console.error("Error setting up video stream:", e);
+    }
 
   }, [videoSrc1, videoSrc2]);
 
@@ -246,7 +257,7 @@ function SideBySidePageContent() {
         <div className="space-y-2">
           <div className="flex justify-between items-center px-1">
              <label className="text-sm font-medium text-blue-400">
-               Skier 1 {stagedDriveVideo1 ? (isVideo1Loaded ? <span className="text-green-500 font-bold">- {stagedDriveVideo1.name} (Loaded)</span> : <span className="text-blue-300 font-bold animate-pulse">- {stagedDriveVideo1.name} (Buffering...)</span>) : ''}
+               Skier 1 {stagedDriveVideo1 ? <span className="text-blue-200 font-bold">- {stagedDriveVideo1.name}</span> : ''}
              </label>
              <label className="text-xs text-gray-500 italic cursor-pointer hover:text-blue-300">
                 Or choose local file...
@@ -290,7 +301,7 @@ function SideBySidePageContent() {
         <div className="space-y-2">
           <div className="flex justify-between items-center px-1">
              <label className="text-sm font-medium text-green-400">
-               Skier 2 {stagedDriveVideo2 ? (isVideo2Loaded ? <span className="text-green-500 font-bold">- {stagedDriveVideo2.name} (Loaded)</span> : <span className="text-green-300 font-bold animate-pulse">- {stagedDriveVideo2.name} (Buffering...)</span>) : ''}
+               Skier 2 {stagedDriveVideo2 ? <span className="text-green-200 font-bold">- {stagedDriveVideo2.name}</span> : ''}
              </label>
              <label className="text-xs text-gray-500 italic cursor-pointer hover:text-green-300">
                 Or choose local file...

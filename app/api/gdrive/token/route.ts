@@ -1,16 +1,17 @@
 import { NextResponse } from 'next/server';
-import { getDriveClient } from '@/lib/gdrive';
 
 export const dynamic = 'force-dynamic';
 
 export async function GET() {
   try {
-    const driveClient = await getDriveClient();
-    const auth = driveClient.context._options.auth as any;
-    const token = await auth.getAccessToken();
-    return NextResponse.json({ token });
+    // Return the API Key from the server runtime environment instead of relying on build-time NEXT_PUBLIC replacement
+    const apiKey = process.env.NEXT_PUBLIC_GOOGLE_DRIVE_API_KEY;
+    if (!apiKey) {
+      throw new Error("API Key not found in server environment");
+    }
+    return NextResponse.json({ apiKey });
   } catch (error: any) {
-    console.error('Error generating token:', error.message);
-    return NextResponse.json({ error: 'Failed to generate token' }, { status: 500 });
+    console.error('Error retrieving API key:', error.message);
+    return NextResponse.json({ error: 'Failed to retrieve API key' }, { status: 500 });
   }
 }

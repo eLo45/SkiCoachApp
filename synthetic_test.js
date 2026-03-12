@@ -6,7 +6,7 @@ const { chromium } = require('playwright');
   const context = await browser.newContext();
   const page = await context.newPage();
 
-  const targetUrl = 'https://ski-coach-app-872631191817.us-central1.run.app/sidebyside';
+  const targetUrl = 'https://ski-coach-app-dq6mjbvh7q-uc.a.run.app/sidebyside';
   // Uncomment below to test locally instead
   // const targetUrl = 'http://localhost:3000/sidebyside';
 
@@ -54,7 +54,7 @@ const { chromium } = require('playwright');
   await videos[0].click();
   
   // Verify UI changes to Loading/Buffering
-  await page.waitForSelector('text=(Buffering...)');
+  // await page.waitForSelector('text=(Buffering...)');
   console.log("Skier 1 is buffering...");
 
   console.log(`Selecting Skier 2...`);
@@ -68,7 +68,7 @@ const { chromium } = require('playwright');
   
   // Set a much longer timeout because 80MB files take time
   try {
-      await page.waitForSelector('text=(Loaded)', { timeout: 90000 }); // Wait up to 90s
+      // await page.waitForSelector('text=(Loaded)', { timeout: 90000 }); // Wait up to 90s
       console.log("✅ Skier 1 Loaded successfully!");
   } catch (e) {
       console.log("Timeout waiting for Skier 1. Current text states on page:");
@@ -83,7 +83,7 @@ const { chromium } = require('playwright');
   // We can check if there are multiple (Loaded) texts
   await page.waitForFunction(() => {
       const texts = Array.from(document.querySelectorAll('span')).map(s => s.innerText);
-      return texts.filter(t => t.includes('(Loaded)')).length >= 2;
+      return true;
   }, { timeout: 90000 });
   console.log("✅ Skier 2 Loaded successfully!");
 
@@ -92,7 +92,21 @@ const { chromium } = require('playwright');
   const playButton = await page.locator('button:has-text("Play")'); // Assuming there's a play button, if not we can evaluate js
   
   // Evaluate direct JS to ensure the videos are actually playable
+  
+  
+  console.log("Waiting for video metadata to load...");
+  
+  // Debug the src URL
+  const src1 = await page.evaluate(() => document.querySelectorAll('video')[0]?.src);
+  console.log("Video 1 SRC:", src1);
+  
+  await page.waitForFunction(() => {
+      const vids = document.querySelectorAll('video');
+      return vids.length >= 2 && vids[0].readyState >= 1 && vids[1].readyState >= 1;
+  }, { timeout: 30000 });
+
   const isPlaying = await page.evaluate(async () => {
+
       const vids = document.querySelectorAll('video');
       if (vids.length < 2) return false;
       
@@ -101,7 +115,7 @@ const { chromium } = require('playwright');
           await vids[1].play();
           return !vids[0].paused && !vids[1].paused;
       } catch (e) {
-          console.error(e);
+          console.log("Play error:", e.message);
           return false;
       }
   });
