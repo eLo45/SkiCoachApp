@@ -65,17 +65,9 @@ function SideBySidePageContent() {
     const setStaged = index === 1 ? setStagedDriveVideo1 : setStagedDriveVideo2;
     const currentSrc = index === 1 ? videoSrc1 : videoSrc2;
     const videoRef = index === 1 ? video1Ref : video2Ref;
-    const abortRef = index === 1 ? abortController1Ref : abortController2Ref;
-
-    // Abort any existing download for this slot
-    if (abortRef.current) {
-        abortRef.current.abort();
-    }
-    abortRef.current = new AbortController();
-    const signal = abortRef.current.signal;
 
     setLoaded(false);
-    setProgress(null);
+    setProgress(null); // No more progress bar, we stream instantly
     if (fileName) setStaged({ name: fileName });
     else setStaged(null);
 
@@ -85,76 +77,16 @@ function SideBySidePageContent() {
       return;
     }
 
-    setProgress(0);
-
-    try {
-      // 1. Fetch short-lived token from our backend
-      const tokenRes = await fetch('/api/gdrive/token', { signal });
-      if (!tokenRes.ok) throw new Error('Failed to get download token');
-      const { token } = await tokenRes.json();
-      if (!token) throw new Error('Invalid token received');
-
-      // 2. Download directly from Google Drive API bypassing Cloud Run bandwidth limits
-      const driveApiUrl = `https://www.googleapis.com/drive/v3/files/${fileId}?alt=media`;
+    if (currentSrc && currentSrc.startsWith('blob:')) URL.revokeObjectURL(currentSrc);
       
-      const response = await fetch(driveApiUrl, {
-          headers: {
-              'Authorization': `Bearer ${token}`
-          },
-          signal
-      });
-
-      if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
-
-      const totalSizeHeader = response.headers.get('Content-Length');
-      const totalSize = totalSizeHeader ? parseInt(totalSizeHeader, 10) : 0;
-      let mimeType = response.headers.get('Content-Type') || 'video/mp4';
+    // Use our native streaming proxy which supports HTTP 206 Partial Content
+    const streamingUrl = `/api/gdrive/download?fileId=${fileId}`;
+    setSrc(streamingUrl);
       
-      // Some QuickTime videos might not have the perfect mime type set, but browser usually figures it out if it's generally correct
-      if (mimeType.includes('application/octet-stream')) {
-          mimeType = 'video/mp4'; 
-      }
+    setTimeout(() => {
+        if (videoRef.current) videoRef.current.load();
+    }, 50);
 
-      if (!response.body) throw new Error("ReadableStream not supported by browser.");
-
-      const reader = response.body.getReader();
-      const chunks: any[] = [];
-      let currentTotalLoaded = 0;
-
-      while (true) {
-          const { done, value } = await reader.read();
-          if (done) break;
-          if (signal.aborted) throw new Error('Download cancelled');
-
-          chunks.push(value);
-          currentTotalLoaded += value.byteLength;
-          
-          if (totalSize > 0) {
-              setProgress(Math.round((currentTotalLoaded / totalSize) * 100));
-          }
-      }
-
-      if (currentSrc && currentSrc.startsWith('blob:')) URL.revokeObjectURL(currentSrc);
-      
-      const finalBlob = new Blob(chunks, { type: mimeType });
-      const blobUrl = URL.createObjectURL(finalBlob);
-      
-      setSrc(blobUrl);
-      setProgress(null);
-      
-      setTimeout(() => {
-          if (videoRef.current) videoRef.current.load();
-      }, 50);
-
-    } catch (err: any) {
-      if (err.message === 'Download cancelled' || err.name === 'AbortError') {
-          console.log(`Download cancelled for video ${index}`);
-          return; // Silently exit if aborted by user clicking a new video
-      }
-      console.error('Error downloading video direct from Drive:', err);
-      setProgress(null);
-      alert(`Download failed. Please try again. (${err.message})`);
-    }
   }, [videoSrc1, videoSrc2]);
 
   const handleFileChange = (e: ChangeEvent<HTMLInputElement>, videoNumber: 1 | 2) => {

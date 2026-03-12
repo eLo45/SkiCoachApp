@@ -42,29 +42,32 @@ export async function GET(req: NextRequest) {
 
     const chunksize = (end - start) + 1;
 
-    // 3. Request ONLY the specific byte range from Google Drive as a complete array buffer
+    // 3. Request ONLY the specific byte range from Google Drive as a native stream
     const requestHeaders: any = {
         Range: `bytes=${start}-${end}`
     };
 
     const driveResponse = await drive.files.get(
       { fileId: fileId, alt: 'media' },
-      { responseType: 'arraybuffer', headers: requestHeaders }
+      { responseType: 'stream', headers: requestHeaders }
     );
 
-    const buffer = Buffer.from(driveResponse.data as ArrayBuffer);
+    const readable = driveResponse.data as Readable;
 
     // 4. Construct the HTTP 206 Partial Content response
     const headers = new Headers();
     headers.set('Content-Range', `bytes ${start}-${end}/${fileSize}`);
     headers.set('Accept-Ranges', 'bytes');
-    headers.set('Content-Length', buffer.length.toString());
+    headers.set('Content-Length', chunksize.toString());
     headers.set('Content-Type', mimeType);
 
     // If it's a range request, respond with 206. If not, 200.
     const status = rangeHeader ? 206 : 200;
 
-    return new NextResponse(buffer, {
+    // Convert the Node.js Readable stream natively to a Web ReadableStream using Node 18+ built-in methods
+    const webStream = Readable.toWeb(readable) as ReadableStream;
+
+    return new NextResponse(webStream, {
       status,
       headers,
     });
