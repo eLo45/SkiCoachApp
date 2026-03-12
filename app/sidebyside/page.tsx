@@ -79,8 +79,8 @@ function SideBySidePageContent() {
 
     if (currentSrc && currentSrc.startsWith('blob:')) URL.revokeObjectURL(currentSrc);
       
-    // Use our native streaming proxy which supports HTTP 206 Partial Content
-    const streamingUrl = `/api/gdrive/download?fileId=${fileId}`;
+    // Use the direct Google Drive API with a public API key, completely bypassing Cloud Run and its 32MB payload limits.
+    const streamingUrl = `https://www.googleapis.com/drive/v3/files/${fileId}?alt=media&key=${process.env.NEXT_PUBLIC_GOOGLE_DRIVE_API_KEY}`;
     setSrc(streamingUrl);
       
     setTimeout(() => {
