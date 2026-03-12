@@ -1,7 +1,8 @@
 const fs = require('fs');
 let code = fs.readFileSync('app/sidebyside/page.tsx', 'utf8');
 
-// The user noted that the `isStaging` logic from an earlier iteration was still present alongside the new `isQueued` and `downloadProgress` logic, which might have conflicted. I need to make sure the UI matches the exact current state logic (which relies heavily on downloadQueueRef and processDownloadQueue).
+// The replacement script failed to run because I cancelled the command previously before it finished executing. 
+// I need to run the UI update again to put the correct progress circles back in.
 
 const replacement1 = `
           <div className="aspect-video bg-gray-800 rounded-lg flex items-center justify-center border border-gray-700 overflow-hidden relative">
@@ -33,7 +34,7 @@ const replacement1 = `
           </div>
 `;
 
-code = code.replace(/<div className="aspect-video bg-gray-800 rounded-lg flex items-center justify-center border border-gray-700 overflow-hidden relative">[\s\S]*?<button\s+onClick=\{\(\) => handleMarkSync\(1\)\}/m, replacement1 + "\n          <button\n            onClick={() => handleMarkSync(1)}");
+code = code.replace(/<div className="aspect-video bg-gray-800 rounded-lg flex items-center justify-center border border-gray-700 overflow-hidden relative">[\s\S]*?<button\s+onClick=\{\(\) => handleMarkSync\(1\)\}/m, replacement1 + "\n          <button \n            onClick={() => handleMarkSync(1)}");
 
 const replacement2 = `
           <div className="aspect-video bg-gray-800 rounded-lg flex items-center justify-center border border-gray-700 overflow-hidden relative">
@@ -65,7 +66,7 @@ const replacement2 = `
           </div>
 `;
 
-code = code.replace(/<div className="aspect-video bg-gray-800 rounded-lg flex items-center justify-center border border-gray-700 overflow-hidden relative">[\s\S]*?<button\s+onClick=\{\(\) => handleMarkSync\(2\)\}/m, replacement2 + "\n           <button\n            onClick={() => handleMarkSync(2)}");
+code = code.replace(/<div className="aspect-video bg-gray-800 rounded-lg flex items-center justify-center border border-gray-700 overflow-hidden relative">[\s\S]*?<button\s+onClick=\{\(\) => handleMarkSync\(2\)\}/m, replacement2 + "\n           <button \n            onClick={() => handleMarkSync(2)}");
 
 // Remove the old horizontal bars if they somehow survived
 code = code.replace(/\{downloadProgress1 !== null && \([\s\S]*?\}\)\}/g, '');

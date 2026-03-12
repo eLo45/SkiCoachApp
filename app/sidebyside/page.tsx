@@ -417,7 +417,7 @@ function SideBySidePageContent() {
               )}
           </div>
 
-           <button
+           <button 
             onClick={() => handleMarkSync(2)} 
             disabled={!videoSrc2 || syncsV2.length >= 2} 
             className="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-2 rounded-lg disabled:opacity-50"
