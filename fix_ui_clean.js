@@ -34,7 +34,7 @@ const replacement1 = `
           </div>
 `;
 
-code = code.replace(/<div className="aspect-video bg-gray-800 rounded-lg flex items-center justify-center border border-gray-700 overflow-hidden relative">[\s\S]*?<button\s+onClick=\{\(\) => handleMarkSync\(1\)\}/m, replacement1 + "\n          <button \n            onClick={() => handleMarkSync(1)}");
+code = code.replace(/<div className="aspect-video bg-gray-800 rounded-lg flex items-center justify-center border border-gray-700 overflow-hidden relative">[\s\S]*?<button \n            onClick=\{\(\) => handleMarkSync\(1\)\}/m, replacement1 + "\n          <button \n            onClick={() => handleMarkSync(1)}");
 
 const replacement2 = `
           <div className="aspect-video bg-gray-800 rounded-lg flex items-center justify-center border border-gray-700 overflow-hidden relative">
@@ -66,9 +66,9 @@ const replacement2 = `
           </div>
 `;
 
-code = code.replace(/<div className="aspect-video bg-gray-800 rounded-lg flex items-center justify-center border border-gray-700 overflow-hidden relative">[\s\S]*?<button\s+onClick=\{\(\) => handleMarkSync\(2\)\}/m, replacement2 + "\n           <button \n            onClick={() => handleMarkSync(2)}");
+code = code.replace(/<div className="aspect-video bg-gray-800 rounded-lg flex items-center justify-center border border-gray-700 overflow-hidden relative">[\s\S]*?<button \n            onClick=\{\(\) => handleMarkSync\(2\)\}/m, replacement2 + "\n           <button \n            onClick={() => handleMarkSync(2)}");
 
-// Remove the old horizontal bars if they somehow survived
+// Clean up old staging texts if they exist
 code = code.replace(/\{downloadProgress1 !== null && \([\s\S]*?\}\)\}/g, '');
 code = code.replace(/\{downloadProgress2 !== null && \([\s\S]*?\}\)\}/g, '');
 

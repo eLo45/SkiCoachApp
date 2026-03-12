@@ -86,79 +86,59 @@ function SideBySidePageContent() {
       const videoRef = index === 1 ? video1Ref : video2Ref;
       const abortRef = index === 1 ? abortController1Ref : abortController2Ref;
 
-      
       setIsQueued(false);
       setProgress(0);
-      console.log('QUEUE: Starting download for', fileId);
-
 
       try {
-        // Step 1: Tell the backend to copy the file to the GCS cache and return a Signed URL
+        const CHUNK_SIZE = 10 * 1024 * 1024; 
+        let start = 0;
+        let totalSize = 0;
+        const chunks: ArrayBuffer[] = [];
+
+        while (true) {
+          if (abortRef.current?.signal.aborted) throw new Error('Download cancelled');
+
+          const end = start + CHUNK_SIZE - 1;
+          const response = await fetch(`/api/gdrive/download?fileId=${fileId}`, {
+            headers: { 'Range': `bytes=${start}-${end}` }
+          });
+
+          if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
+
+          const contentRange = response.headers.get('Content-Range');
+          if (contentRange) {
+              const match = contentRange.match(/\/(\d+)/);
+              if (match) totalSize = parseInt(match[1], 10);
+          }
+
+          const arrayBuffer = await response.arrayBuffer();
+          if (abortRef.current?.signal.aborted) throw new Error('Download cancelled');
+
+          chunks.push(arrayBuffer);
+
+          const currentTotalLoaded = chunks.reduce((acc, c) => acc + c.byteLength, 0);
+          
+          if (totalSize > 0) {
+              setProgress(Math.round((currentTotalLoaded / totalSize) * 100));
+          }
+
+          if (response.status !== 206 || (totalSize > 0 && currentTotalLoaded >= totalSize) || arrayBuffer.byteLength === 0) {
+              break;
+          }
+
+          start += arrayBuffer.byteLength;
+        }
+
+        if (currentSrc && currentSrc.startsWith('blob:')) URL.revokeObjectURL(currentSrc);
+        const finalBlob = new Blob(chunks, { type: 'video/mp4' });
+        const blobUrl = URL.createObjectURL(finalBlob);
         
-        console.log('QUEUE: Fetching proxy URL...');
-        const urlRes = await fetch(`/api/gdrive/download?fileId=${fileId}`);
-
-        if (!urlRes.ok) throw new Error('Failed to fetch streaming URL from server');
-        const data = await urlRes.json();
-        if (!data.url) throw new Error('Invalid URL returned from proxy');
-
-        // Step 2: Download the file directly from GCS using XHR to track progress
-        await new Promise((resolve, reject) => {
-            
-            console.log('QUEUE: Sending XHR to', data.url.substring(0, 50) + '...');
-            const xhr = new XMLHttpRequest();
-
-            xhr.open('GET', data.url, true);
-            xhr.responseType = 'blob';
-
-            xhr.onprogress = (event) => {
-              if (event.lengthComputable) {
-                const percentComplete = (event.loaded / event.total) * 100;
-                setProgress(Math.round(percentComplete));
-              }
-            };
-
-            
-            
-            xhr.onload = () => {
-              console.log('QUEUE: XHR Onload', xhr.status);
-
-              if (xhr.status === 200 || xhr.status === 206) {
-                if (currentSrc && currentSrc.startsWith('blob:')) URL.revokeObjectURL(currentSrc);
-                
-                // Explicitly define the MIME type to prevent the browser from rejecting application/octet-stream
-                // We default to video/mp4, but standard quicktime/mov works fine in Chrome when cast to mp4 type.
-                const finalBlob = new Blob([xhr.response], { type: 'video/mp4' });
-                const blobUrl = URL.createObjectURL(finalBlob);
-                
-                setSrc(blobUrl);
-                setProgress(null);
-
-                
-                setTimeout(() => {
-                    if (videoRef.current) videoRef.current.load();
-                }, 50);
-                resolve(null);
-              } else {
-                reject(new Error(`Failed to download video blob: ${xhr.statusText}`));
-              }
-            };
-
-            
-            xhr.onerror = () => {
-              console.error('QUEUE: XHR Error state!', xhr.status, xhr.statusText);
-
-              reject(new Error('XHR network error during video download'));
-            };
-
-            // Attach abort signal
-            abortRef.current?.signal.addEventListener('abort', () => {
-                xhr.abort();
-                reject(new Error('Download cancelled'));
-            });
-
-            xhr.send();
-        });
+        setSrc(blobUrl);
+        setProgress(null);
+        
+        setTimeout(() => {
+            if (videoRef.current) videoRef.current.load();
+        }, 50);
 
       } catch (err: any) {
         if (err.message !== 'Download cancelled') {
@@ -382,32 +362,68 @@ function SideBySidePageContent() {
           </div>
           
           {downloadProgress1 !== null && (
-              <div className="w-full bg-gray-700 rounded-full h-2.5 mb-2">
+              <div className="w-full bg-gray-700 rounded-full h-2.5 mb-2 hidden">
                   <div className="bg-blue-500 h-2.5 rounded-full transition-all duration-300" style={{ width: `${downloadProgress1}%` }}></div>
               </div>
           )}
 
-          
-          
           <div className="aspect-video bg-gray-800 rounded-lg flex items-center justify-center border border-gray-700 overflow-hidden relative">
-              {isQueued2 && downloadProgress2 === null && (
+              {isQueued1 && downloadProgress1 === null && (
                   <div className="absolute inset-0 bg-black/80 flex flex-col items-center justify-center z-10 p-4 text-center">
                       <div className="w-8 h-8 border-4 border-gray-500 border-t-transparent rounded-full animate-spin mb-3"></div>
                       <span className="text-white font-bold mb-1 text-lg">Waiting in Queue...</span>
                       <span className="text-xs text-gray-300">Another video is currently downloading to cache.</span>
                   </div>
               )}
-              {downloadProgress2 !== null && (
+              {downloadProgress1 !== null && (
                   <div className="absolute inset-0 bg-black/80 flex flex-col items-center justify-center z-10 p-4 text-center">
                       <div className="relative flex items-center justify-center w-16 h-16 mb-4">
                           <svg className="absolute w-full h-full text-gray-700" viewBox="0 0 36 36">
                               <path className="text-gray-700" d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831" fill="none" stroke="currentColor" strokeWidth="3" strokeDasharray="100, 100" />
-                              <path className="text-green-500 transition-all duration-300" d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831" fill="none" stroke="currentColor" strokeWidth="3" strokeDasharray={`${downloadProgress2}, 100`} />
+                              <path className="text-blue-500 transition-all duration-300" d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831" fill="none" stroke="currentColor" strokeWidth="3" strokeDasharray={`${downloadProgress1}, 100`} />
                           </svg>
-                          <svg className="w-6 h-6 text-green-500 absolute" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"></path></svg>
+                          <svg className="w-6 h-6 text-blue-500 absolute" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"></path></svg>
                       </div>
-                      <span className="text-white font-bold mb-1 text-xl">{downloadProgress2}%</span>
+                      <span className="text-white font-bold mb-1 text-xl">{downloadProgress1}%</span>
                       <span className="text-xs text-gray-300">Downloading video locally for flawless scrubbing...</span>
+                  </div>
+              )}
+              {videoSrc1 ? (
+              <video key={videoSrc1} ref={video1Ref} src={videoSrc1} preload="metadata" onLoadedMetadata={() => handleLoadedMetadata(1)} onTimeUpdate={() => { if (video1Ref.current && !isPlaying) setCurrentTime1(video1Ref.current.currentTime); }} className="w-full h-full" controls={false} muted/>
+              ) : (
+              <p className="text-gray-500">Video Player 1</p>
+              )}
+          </div>
+          <button 
+            onClick={() => handleMarkSync(1)} 
+            disabled={!videoSrc1 || syncsV1.length >= 2} 
+            className="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-2 rounded-lg disabled:opacity-50"
+          >
+              {syncsV1.length === 0 ? "Mark Sync Point 1" : syncsV1.length === 1 ? "Mark Sync Point 2" : "Sync Points Full"}
+          </button>
+          <div className="flex justify-between text-xs text-gray-400 px-2">
+            <span>Sync 1: {syncsV1[0]?.toFixed(2) || "---"}</span>
+            <span>Sync 2: {syncsV1[1]?.toFixed(2) || "---"}</span>
+          </div>
+        </div>
+
+        <div className="space-y-2">
+          <div className="flex justify-between items-center px-1">
+             <label className="text-sm font-medium text-green-400">
+               Skier 2 {stagedDriveVideo2 ? <span className="text-green-200 font-bold">- {stagedDriveVideo2.name}</span> : ''}
+             </label>
+             <label className="text-xs text-gray-500 italic cursor-pointer hover:text-green-300">
+                Or choose local file...
+                <input type="file" accept="video/*" onChange={(e) => handleFileChange(e, 2)} className="hidden" />
+             </label>
+          </div>
+
+          <div className="aspect-video bg-gray-800 rounded-lg flex items-center justify-center border border-gray-700 overflow-hidden relative">
+              {isStaging2 && (
+                  <div className="absolute inset-0 bg-black/80 flex flex-col items-center justify-center z-10 p-4 text-center">
+                      <div className="w-8 h-8 border-4 border-green-500 border-t-transparent rounded-full animate-spin mb-3"></div>
+                      <span className="text-white font-bold mb-1">Staging Video...</span>
+                      <span className="text-xs text-gray-300">Copying to Cloud Cache for flawless scrubbing. Please wait a moment.</span>
                   </div>
               )}
               {videoSrc2 ? (
@@ -416,7 +432,6 @@ function SideBySidePageContent() {
               <p className="text-gray-500">Video Player 2</p>
               )}
           </div>
-
            <button 
             onClick={() => handleMarkSync(2)} 
             disabled={!videoSrc2 || syncsV2.length >= 2} 
