@@ -32,6 +32,18 @@ const CalendarView: React.FC<CalendarViewProps> = ({ onDaySelect, rootFolderId }
           // Assume the API returns them, but let's ensure they are sorted so the list view makes sense chronologically
           const sortedFolders = (data.files || []).sort((a: any, b: any) => b.name.localeCompare(a.name));
           setFolders(sortedFolders);
+          
+          // Auto-select the most recent folder on initial load if none is selected
+          if (sortedFolders.length > 0 && selectedIndex === null) {
+              const firstFolder = sortedFolders[0];
+              const folderDate = parseFolderDate(firstFolder.name);
+              if (folderDate) {
+                  onChange(folderDate);
+              }
+              setSelectedIndex(0);
+              onDaySelect(firstFolder.id);
+          }
+          
         } catch (err: any) {
           setError(err.message);
         } finally {
@@ -41,7 +53,7 @@ const CalendarView: React.FC<CalendarViewProps> = ({ onDaySelect, rootFolderId }
 
       fetchFolders();
     }
-  }, [rootFolderId]);
+  }, [rootFolderId]); // Keep selectedIndex out to prevent loops on hot-reloads
 
   const parseFolderDate = (folderName: string): Date | null => {
     // Looks for a date prefix like YYYY.MM.DD or YYYY.M.D

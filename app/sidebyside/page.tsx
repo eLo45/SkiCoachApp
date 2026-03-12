@@ -38,6 +38,9 @@ function SideBySidePageContent() {
   const [isVideo1Loaded, setIsVideo1Loaded] = useState(false);
   const [isVideo2Loaded, setIsVideo2Loaded] = useState(false);
   
+  const [isStaging1, setIsStaging1] = useState(false);
+  const [isStaging2, setIsStaging2] = useState(false);
+  
   const [downloadProgress1, setDownloadProgress1] = useState<number | null>(null);
   const [downloadProgress2, setDownloadProgress2] = useState<number | null>(null);
 
@@ -60,6 +63,7 @@ function SideBySidePageContent() {
 
   const handleVideoSelect = useCallback(async (fileId: string | null, index: 1 | 2, fileName?: string) => {
     const setProgress = index === 1 ? setDownloadProgress1 : setDownloadProgress2;
+    const setIsStaging = index === 1 ? setIsStaging1 : setIsStaging2;
     const setSrc = index === 1 ? setVideoSrc1 : setVideoSrc2;
     const setLoaded = index === 1 ? setIsVideo1Loaded : setIsVideo2Loaded;
     const setStaged = index === 1 ? setStagedDriveVideo1 : setStagedDriveVideo2;
@@ -67,21 +71,22 @@ function SideBySidePageContent() {
     const videoRef = index === 1 ? video1Ref : video2Ref;
 
     setLoaded(false);
-    setProgress(null); // No more progress bar, we stream instantly
+    setProgress(null);
     if (fileName) setStaged({ name: fileName });
     else setStaged(null);
 
     if (!fileId) {
       if (currentSrc && currentSrc.startsWith('blob:')) URL.revokeObjectURL(currentSrc);
       setSrc(null);
+      setIsStaging(false);
       return;
     }
 
     if (currentSrc && currentSrc.startsWith('blob:')) URL.revokeObjectURL(currentSrc);
       
-    // We fetch a secure Signed URL from our backend proxy.
-    // The backend instantly transfers the file from Google Drive to Google Cloud Storage (GCS)
-    // and returns a GCS URL. This bypasses Cloud Run payload limits and provides perfect streaming.
+    // Set staging to true to show the UI overlay
+    setIsStaging(true);
+
     try {
         const urlRes = await fetch(`/api/gdrive/download?fileId=${fileId}`);
         if (!urlRes.ok) throw new Error('Failed to fetch streaming URL');
@@ -97,6 +102,8 @@ function SideBySidePageContent() {
     } catch (e) {
         console.error("Error setting up video stream:", e);
         alert("Error loading video stream.");
+    } finally {
+        setIsStaging(false);
     }
 
   }, [videoSrc1, videoSrc2]);
@@ -273,15 +280,15 @@ function SideBySidePageContent() {
           )}
 
           <div className="aspect-video bg-gray-800 rounded-lg flex items-center justify-center border border-gray-700 overflow-hidden relative">
-              {downloadProgress1 !== null && (
-                  <div className="absolute inset-0 bg-black/60 flex flex-col items-center justify-center z-10">
-                      <div className="w-8 h-8 border-4 border-blue-500 border-t-transparent rounded-full animate-spin mb-2"></div>
-                      <span className="text-white font-bold">{downloadProgress1}% Downloaded</span>
-                      <span className="text-xs text-gray-300">Caching for smooth playback</span>
+              {isStaging1 && (
+                  <div className="absolute inset-0 bg-black/80 flex flex-col items-center justify-center z-10 p-4 text-center">
+                      <div className="w-8 h-8 border-4 border-blue-500 border-t-transparent rounded-full animate-spin mb-3"></div>
+                      <span className="text-white font-bold mb-1">Staging Video...</span>
+                      <span className="text-xs text-gray-300">Copying to Cloud Cache for flawless scrubbing. Please wait a moment.</span>
                   </div>
               )}
               {videoSrc1 ? (
-              <video key={videoSrc1} ref={video1Ref} src={videoSrc1} preload="metadata" onCanPlayThrough={() => setIsVideo1Loaded(true)} onLoadedMetadata={() => handleLoadedMetadata(1)} onTimeUpdate={() => { if (video1Ref.current && !isPlaying) setCurrentTime1(video1Ref.current.currentTime); }} className="w-full h-full" controls={false} muted/>
+              <video key={videoSrc1} ref={video1Ref} src={videoSrc1} preload="metadata" onLoadedMetadata={() => handleLoadedMetadata(1)} onTimeUpdate={() => { if (video1Ref.current && !isPlaying) setCurrentTime1(video1Ref.current.currentTime); }} className="w-full h-full" controls={false} muted/>
               ) : (
               <p className="text-gray-500">Video Player 1</p>
               )}
@@ -309,23 +316,17 @@ function SideBySidePageContent() {
                 <input type="file" accept="video/*" onChange={(e) => handleFileChange(e, 2)} className="hidden" />
              </label>
           </div>
-          
-          {downloadProgress2 !== null && (
-              <div className="w-full bg-gray-700 rounded-full h-2.5 mb-2">
-                  <div className="bg-green-500 h-2.5 rounded-full transition-all duration-300" style={{ width: `${downloadProgress2}%` }}></div>
-              </div>
-          )}
 
           <div className="aspect-video bg-gray-800 rounded-lg flex items-center justify-center border border-gray-700 overflow-hidden relative">
-              {downloadProgress2 !== null && (
-                  <div className="absolute inset-0 bg-black/60 flex flex-col items-center justify-center z-10">
-                      <div className="w-8 h-8 border-4 border-green-500 border-t-transparent rounded-full animate-spin mb-2"></div>
-                      <span className="text-white font-bold">{downloadProgress2}% Downloaded</span>
-                      <span className="text-xs text-gray-300">Caching for smooth playback</span>
+              {isStaging2 && (
+                  <div className="absolute inset-0 bg-black/80 flex flex-col items-center justify-center z-10 p-4 text-center">
+                      <div className="w-8 h-8 border-4 border-green-500 border-t-transparent rounded-full animate-spin mb-3"></div>
+                      <span className="text-white font-bold mb-1">Staging Video...</span>
+                      <span className="text-xs text-gray-300">Copying to Cloud Cache for flawless scrubbing. Please wait a moment.</span>
                   </div>
               )}
               {videoSrc2 ? (
-              <video key={videoSrc2} ref={video2Ref} src={videoSrc2} preload="metadata" onCanPlayThrough={() => setIsVideo2Loaded(true)} onLoadedMetadata={() => handleLoadedMetadata(2)} onTimeUpdate={() => { if (video2Ref.current && !isPlaying) setCurrentTime2(video2Ref.current.currentTime); }} className="w-full h-full" controls={false} muted/>
+              <video key={videoSrc2} ref={video2Ref} src={videoSrc2} preload="metadata" onLoadedMetadata={() => handleLoadedMetadata(2)} onTimeUpdate={() => { if (video2Ref.current && !isPlaying) setCurrentTime2(video2Ref.current.currentTime); }} className="w-full h-full" controls={false} muted/>
               ) : (
               <p className="text-gray-500">Video Player 2</p>
               )}
