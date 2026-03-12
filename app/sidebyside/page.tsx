@@ -58,7 +58,7 @@ function SideBySidePageContent() {
     setSelectedDayFolderId(folderId);
   };
 
-  const handleVideoSelect = useCallback(async (streamingUrl: string | null, index: 1 | 2, fileName?: string) => {
+  const handleVideoSelect = useCallback(async (fileId: string | null, index: 1 | 2, fileName?: string) => {
     const setProgress = index === 1 ? setDownloadProgress1 : setDownloadProgress2;
     const setSrc = index === 1 ? setVideoSrc1 : setVideoSrc2;
     const setLoaded = index === 1 ? setIsVideo1Loaded : setIsVideo2Loaded;
@@ -76,10 +76,10 @@ function SideBySidePageContent() {
 
     setLoaded(false);
     setProgress(null);
-    if (fileName) setStaged({name: fileName});
+    if (fileName) setStaged({ name: fileName });
     else setStaged(null);
 
-    if (!streamingUrl) {
+    if (!fileId) {
       if (currentSrc && currentSrc.startsWith('blob:')) URL.revokeObjectURL(currentSrc);
       setSrc(null);
       return;
@@ -88,57 +88,54 @@ function SideBySidePageContent() {
     setProgress(0);
 
     try {
-      const fileId = new URL(streamingUrl, window.location.origin).searchParams.get('fileId');
-      if (!fileId) throw new Error("Invalid file ID");
+      // 1. Fetch short-lived token from our backend
+      const tokenRes = await fetch('/api/gdrive/token', { signal });
+      if (!tokenRes.ok) throw new Error('Failed to get download token');
+      const { token } = await tokenRes.json();
+      if (!token) throw new Error('Invalid token received');
 
-      const CHUNK_SIZE = 25 * 1024 * 1024; // Increased to 25MB chunks to reduce network connection overhead
-      let start = 0;
-      let totalSize = 0;
-      let mimeType = 'video/mp4'; // default fallback
-      const chunks: ArrayBuffer[] = [];
+      // 2. Download directly from Google Drive API bypassing Cloud Run bandwidth limits
+      const driveApiUrl = `https://www.googleapis.com/drive/v3/files/${fileId}?alt=media`;
+      
+      const response = await fetch(driveApiUrl, {
+          headers: {
+              'Authorization': `Bearer ${token}`
+          },
+          signal
+      });
+
+      if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
+
+      const totalSizeHeader = response.headers.get('Content-Length');
+      const totalSize = totalSizeHeader ? parseInt(totalSizeHeader, 10) : 0;
+      let mimeType = response.headers.get('Content-Type') || 'video/mp4';
+      
+      // Some QuickTime videos might not have the perfect mime type set, but browser usually figures it out if it's generally correct
+      if (mimeType.includes('application/octet-stream')) {
+          mimeType = 'video/mp4'; 
+      }
+
+      if (!response.body) throw new Error("ReadableStream not supported by browser.");
+
+      const reader = response.body.getReader();
+      const chunks: any[] = [];
+      let currentTotalLoaded = 0;
 
       while (true) {
-        if (signal.aborted) throw new Error('Download cancelled');
+          const { done, value } = await reader.read();
+          if (done) break;
+          if (signal.aborted) throw new Error('Download cancelled');
 
-        const end = start + CHUNK_SIZE - 1;
-        const response = await fetch(`/api/gdrive/download?fileId=${fileId}`, {
-          headers: { 'Range': `bytes=${start}-${end}` },
-          signal
-        });
-
-        if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
-
-        const fetchedMimeType = response.headers.get('Content-Type');
-        if (fetchedMimeType) mimeType = fetchedMimeType;
-
-        const contentRange = response.headers.get('Content-Range');
-        if (contentRange) {
-            const match = contentRange.match(/\/(\d+)/);
-            if (match) totalSize = parseInt(match[1], 10);
-        }
-
-        const arrayBuffer = await response.arrayBuffer();
-        if (signal.aborted) throw new Error('Download cancelled');
-
-        chunks.push(arrayBuffer);
-
-        const currentTotalLoaded = chunks.reduce((acc, c) => acc + c.byteLength, 0);
-        
-        if (totalSize > 0) {
-            setProgress(Math.round((currentTotalLoaded / totalSize) * 100));
-        }
-
-        // If the server didn't return partial content, or we have downloaded the whole file, stop.
-        if (response.status !== 206 || (totalSize > 0 && currentTotalLoaded >= totalSize) || arrayBuffer.byteLength === 0) {
-            break;
-        }
-
-        start += arrayBuffer.byteLength;
+          chunks.push(value);
+          currentTotalLoaded += value.byteLength;
+          
+          if (totalSize > 0) {
+              setProgress(Math.round((currentTotalLoaded / totalSize) * 100));
+          }
       }
 
       if (currentSrc && currentSrc.startsWith('blob:')) URL.revokeObjectURL(currentSrc);
       
-      // Use the dynamic MIME type from the backend so QuickTime (.MOV) files aren't rejected by the browser
       const finalBlob = new Blob(chunks, { type: mimeType });
       const blobUrl = URL.createObjectURL(finalBlob);
       
@@ -154,7 +151,7 @@ function SideBySidePageContent() {
           console.log(`Download cancelled for video ${index}`);
           return; // Silently exit if aborted by user clicking a new video
       }
-      console.error('Error downloading video in chunks:', err);
+      console.error('Error downloading video direct from Drive:', err);
       setProgress(null);
       alert(`Download failed. Please try again. (${err.message})`);
     }

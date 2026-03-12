@@ -3,7 +3,7 @@
 import React, { useState, useEffect } from 'react';
 
 interface GoogleDrivePickerProps {
-  onVideoSelect: (streamingUrl: string | null, index: 1 | 2, fileName?: string) => void;
+  onVideoSelect: (fileId: string | null, index: 1 | 2, fileName?: string) => void;
   selectedDayFolderId: string | null;
 }
 
@@ -62,15 +62,12 @@ const GoogleDrivePicker: React.FC<GoogleDrivePickerProps> = ({ onVideoSelect, se
       return;
     }
 
-    // Pass the streaming API URL
-    const streamingUrl = `/api/gdrive/download?fileId=${fileId}`;
-
     if (!selectedVideo1) {
       setSelectedVideo1(fileId);
-      onVideoSelect(streamingUrl, 1, fileName);
+      onVideoSelect(fileId, 1, fileName);
     } else if (!selectedVideo2) {
       setSelectedVideo2(fileId);
-      onVideoSelect(streamingUrl, 2, fileName);
+      onVideoSelect(fileId, 2, fileName);
     } else {
       // Both slots full
       setWarningMsg("Both video slots are full. Deselect a video first by clicking on it again.");
