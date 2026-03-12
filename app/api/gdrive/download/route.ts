@@ -33,21 +33,31 @@ export async function GET(req: NextRequest) {
     if (!exists) {
       console.log(`File ${fileId} not found in cache. Downloading from Drive to GCS...`);
       
+      // Get the file metadata to ensure we store it with the correct content type
+      const metaResponse = await drive.files.get({
+        fileId: fileId,
+        fields: 'mimeType'
+      });
+      const mimeType = metaResponse.data.mimeType || 'video/mp4';
+
       // Get the file stream from Drive
       const driveResponse = await drive.files.get(
         { fileId: fileId, alt: 'media' },
         { responseType: 'stream' }
       );
 
-      // Pipe the Drive stream directly into the GCS bucket.
+      // Pipe the Drive stream directly into the GCS bucket with explicit metadata
       // This happens on Google's internal backbone, so an 80MB file transfers in less than 1 second.
       await new Promise((resolve, reject) => {
         (driveResponse.data as Readable)
-          .pipe(file.createWriteStream({ resumable: false }))
+          .pipe(file.createWriteStream({ 
+              resumable: false,
+              metadata: { contentType: mimeType }
+          }))
           .on('error', reject)
           .on('finish', resolve);
       });
-      console.log(`Successfully cached ${fileId} to GCS.`);
+      console.log(`Successfully cached ${fileId} to GCS as ${mimeType}.`);
     } else {
         console.log(`File ${fileId} already in cache.`);
     }

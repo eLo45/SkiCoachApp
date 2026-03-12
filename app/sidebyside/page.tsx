@@ -86,59 +86,79 @@ function SideBySidePageContent() {
       const videoRef = index === 1 ? video1Ref : video2Ref;
       const abortRef = index === 1 ? abortController1Ref : abortController2Ref;
 
+      
       setIsQueued(false);
       setProgress(0);
+      console.log('QUEUE: Starting download for', fileId);
+
 
       try {
-        const CHUNK_SIZE = 10 * 1024 * 1024; 
-        let start = 0;
-        let totalSize = 0;
-        const chunks: ArrayBuffer[] = [];
-
-        while (true) {
-          if (abortRef.current?.signal.aborted) throw new Error('Download cancelled');
-
-          const end = start + CHUNK_SIZE - 1;
-          const response = await fetch(`/api/gdrive/download?fileId=${fileId}`, {
-            headers: { 'Range': `bytes=${start}-${end}` }
-          });
-
-          if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
-
-          const contentRange = response.headers.get('Content-Range');
-          if (contentRange) {
-              const match = contentRange.match(/\/(\d+)/);
-              if (match) totalSize = parseInt(match[1], 10);
-          }
-
-          const arrayBuffer = await response.arrayBuffer();
-          if (abortRef.current?.signal.aborted) throw new Error('Download cancelled');
-
-          chunks.push(arrayBuffer);
-
-          const currentTotalLoaded = chunks.reduce((acc, c) => acc + c.byteLength, 0);
-          
-          if (totalSize > 0) {
-              setProgress(Math.round((currentTotalLoaded / totalSize) * 100));
-          }
-
-          if (response.status !== 206 || (totalSize > 0 && currentTotalLoaded >= totalSize) || arrayBuffer.byteLength === 0) {
-              break;
-          }
-
-          start += arrayBuffer.byteLength;
-        }
-
-        if (currentSrc && currentSrc.startsWith('blob:')) URL.revokeObjectURL(currentSrc);
-        const finalBlob = new Blob(chunks, { type: 'video/mp4' });
-        const blobUrl = URL.createObjectURL(finalBlob);
+        // Step 1: Tell the backend to copy the file to the GCS cache and return a Signed URL
         
-        setSrc(blobUrl);
-        setProgress(null);
-        
-        setTimeout(() => {
-            if (videoRef.current) videoRef.current.load();
-        }, 50);
+        console.log('QUEUE: Fetching proxy URL...');
+        const urlRes = await fetch(`/api/gdrive/download?fileId=${fileId}`);
+
+        if (!urlRes.ok) throw new Error('Failed to fetch streaming URL from server');
+        const data = await urlRes.json();
+        if (!data.url) throw new Error('Invalid URL returned from proxy');
+
+        // Step 2: Download the file directly from GCS using XHR to track progress
+        await new Promise((resolve, reject) => {
+            
+            console.log('QUEUE: Sending XHR to', data.url.substring(0, 50) + '...');
+            const xhr = new XMLHttpRequest();
+
+            xhr.open('GET', data.url, true);
+            xhr.responseType = 'blob';
+
+            xhr.onprogress = (event) => {
+              if (event.lengthComputable) {
+                const percentComplete = (event.loaded / event.total) * 100;
+                setProgress(Math.round(percentComplete));
+              }
+            };
+
+            
+            
+            xhr.onload = () => {
+              console.log('QUEUE: XHR Onload', xhr.status);
+
+              if (xhr.status === 200 || xhr.status === 206) {
+                if (currentSrc && currentSrc.startsWith('blob:')) URL.revokeObjectURL(currentSrc);
+                
+                // Explicitly define the MIME type to prevent the browser from rejecting application/octet-stream
+                // We default to video/mp4, but standard quicktime/mov works fine in Chrome when cast to mp4 type.
+                const finalBlob = new Blob([xhr.response], { type: 'video/mp4' });
+                const blobUrl = URL.createObjectURL(finalBlob);
+                
+                setSrc(blobUrl);
+                setProgress(null);
+
+                
+                setTimeout(() => {
+                    if (videoRef.current) videoRef.current.load();
+                }, 50);
+                resolve(null);
+              } else {
+                reject(new Error(`Failed to download video blob: ${xhr.statusText}`));
+              }
+            };
+
+            
+            xhr.onerror = () => {
+              console.error('QUEUE: XHR Error state!', xhr.status, xhr.statusText);
+
+              reject(new Error('XHR network error during video download'));
+            };
+
+            // Attach abort signal
+            abortRef.current?.signal.addEventListener('abort', () => {
+                xhr.abort();
+                reject(new Error('Download cancelled'));
+            });
+
+            xhr.send();
+        });
 
       } catch (err: any) {
         if (err.message !== 'Download cancelled') {

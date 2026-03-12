@@ -1,20 +1,20 @@
 const { chromium } = require('playwright');
 
 (async () => {
-  console.log("Starting synthetic browser test for video playback...");
+  console.log("Starting synthetic browser test for UI downloading queue...");
   const browser = await chromium.launch({ headless: true });
   const context = await browser.newContext();
   const page = await context.newPage();
 
-  const targetUrl = 'https://ski-coach-app-dq6mjbvh7q-uc.a.run.app/sidebyside';
-  // Uncomment below to test locally instead
-  // const targetUrl = 'http://localhost:3000/sidebyside';
+  page.on('console', msg => console.log('PAGE LOG:', msg.text()));
+  page.on('pageerror', error => console.log('PAGE ERROR:', error.message));
 
-  console.log(`Navigating to ${targetUrl}...`);
+  const targetUrl = 'https://ski-coach-app-dq6mjbvh7q-uc.a.run.app/sidebyside';
+
+  console.log(`Navigating to ${targetUrl}`);
   await page.goto(targetUrl, { waitUntil: 'networkidle' });
 
   console.log("Waiting for Calendar to load and folders to appear...");
-  // Wait for the folder list to populate
   await page.waitForSelector('text=Folder List');
   
   const folderButtons = await page.locator('button.text-left').elementHandles();
@@ -25,22 +25,14 @@ const { chromium } = require('playwright');
   }
   
   let videos = [];
-  // Iterate through folders until we find one with at least 2 videos
   for (let i = 0; i < folderButtons.length; i++) {
       console.log(`Clicking on folder: ${await folderButtons[i].innerText()}`);
       await folderButtons[i].click();
-      
-      // Wait a moment for videos to fetch
       await page.waitForTimeout(2000); 
-
-      // Wait for the grid of videos to appear or 'No videos found'
       videos = await page.locator('.grid.grid-cols-2 > div').elementHandles();
-      
       if (videos.length >= 2) {
           console.log(`Found ${videos.length} videos in this folder! Proceeding with test.`);
           break;
-      } else {
-          console.log(`Only found ${videos.length} videos. Checking next folder...`);
       }
   }
 
@@ -50,63 +42,43 @@ const { chromium } = require('playwright');
       return;
   }
 
-  console.log(`Found ${videos.length} videos. Selecting Skier 1...`);
+  console.log(`Clicking Skier 1...`);
   await videos[0].click();
   
-  // Verify UI changes to Loading/Buffering
-  // await page.waitForSelector('text=(Buffering...)');
-  console.log("Skier 1 is buffering...");
+  // Wait for the video element to actually appear, meaning the blob was set
+  console.log("Waiting for Video 1 to render...");
+  await page.waitForSelector('video', { timeout: 60000 });
+  console.log("✅ Skier 1 video tag rendered.");
 
-  console.log(`Selecting Skier 2...`);
+  console.log(`Clicking Skier 2...`);
   await videos[1].click();
 
-  console.log("Skier 2 is buffering...");
+  console.log("Waiting for Video 2 to render...");
+  // Wait until there are exactly 2 video elements
+  await page.waitForFunction(() => document.querySelectorAll('video').length === 2, { timeout: 60000 });
+  console.log("✅ Skier 2 video tag rendered.");
 
-  // Now we wait for the browser to fire the 'canplaythrough' event which changes the text to (Loaded)
-  console.log("Waiting for Skier 1 to fully load (canplaythrough)...");
-  await page.waitForSelector('text=Skier 1', { state: 'attached' });
+  console.log("Verifying videos are loaded into players with blobs...");
+  const srcs = await page.evaluate(() => {
+      return Array.from(document.querySelectorAll('video')).map(v => v.src);
+  });
   
-  // Set a much longer timeout because 80MB files take time
-  try {
-      // await page.waitForSelector('text=(Loaded)', { timeout: 90000 }); // Wait up to 90s
-      console.log("✅ Skier 1 Loaded successfully!");
-  } catch (e) {
-      console.log("Timeout waiting for Skier 1. Current text states on page:");
-      const texts = await page.evaluate(() => {
-          return Array.from(document.querySelectorAll('span')).map(s => s.innerText).filter(t => t.includes('Downloaded') || t.includes('Buffering') || t.includes('Loaded'));
-      });
-      console.log(texts);
-      throw e;
+  console.log("Video SRCs:", srcs);
+  if (srcs.length === 2 && srcs[0].startsWith('blob:') && srcs[1].startsWith('blob:')) {
+      console.log("✅ Both videos successfully loaded into memory blobs.");
+  } else {
+      console.error("❌ Videos are not valid blobs.");
   }
 
-  console.log("Waiting for Skier 2 to fully load (canplaythrough)...");
-  // We can check if there are multiple (Loaded) texts
-  await page.waitForFunction(() => {
-      const texts = Array.from(document.querySelectorAll('span')).map(s => s.innerText);
-      return true;
-  }, { timeout: 90000 });
-  console.log("✅ Skier 2 Loaded successfully!");
-
-  console.log("Testing playback controls...");
-  // Trigger a native playback event via the UI
-  const playButton = await page.locator('button:has-text("Play")'); // Assuming there's a play button, if not we can evaluate js
-  
-  // Evaluate direct JS to ensure the videos are actually playable
-  
-  
   console.log("Waiting for video metadata to load...");
-  
-  // Debug the src URL
-  const src1 = await page.evaluate(() => document.querySelectorAll('video')[0]?.src);
-  console.log("Video 1 SRC:", src1);
-  
   await page.waitForFunction(() => {
       const vids = document.querySelectorAll('video');
       return vids.length >= 2 && vids[0].readyState >= 1 && vids[1].readyState >= 1;
   }, { timeout: 30000 });
+  console.log("✅ Video metadata loaded.");
 
+  console.log("Testing playback controls...");
   const isPlaying = await page.evaluate(async () => {
-
       const vids = document.querySelectorAll('video');
       if (vids.length < 2) return false;
       
@@ -126,6 +98,6 @@ const { chromium } = require('playwright');
       console.error("❌ Videos failed to play.");
   }
 
-  console.log("Test completed successfully.");
+  console.log("Test completed.");
   await browser.close();
 })();
