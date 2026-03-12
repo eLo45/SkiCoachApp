@@ -42,47 +42,29 @@ export async function GET(req: NextRequest) {
 
     const chunksize = (end - start) + 1;
 
-    // 3. Request ONLY the specific byte range from Google Drive
+    // 3. Request ONLY the specific byte range from Google Drive as a complete array buffer
     const requestHeaders: any = {
         Range: `bytes=${start}-${end}`
     };
 
     const driveResponse = await drive.files.get(
       { fileId: fileId, alt: 'media' },
-      { responseType: 'stream', headers: requestHeaders }
+      { responseType: 'arraybuffer', headers: requestHeaders }
     );
 
-    const readable = driveResponse.data as Readable;
+    const buffer = Buffer.from(driveResponse.data as ArrayBuffer);
 
     // 4. Construct the HTTP 206 Partial Content response
     const headers = new Headers();
     headers.set('Content-Range', `bytes ${start}-${end}/${fileSize}`);
     headers.set('Accept-Ranges', 'bytes');
-    headers.set('Content-Length', chunksize.toString());
+    headers.set('Content-Length', buffer.length.toString());
     headers.set('Content-Type', mimeType);
 
     // If it's a range request, respond with 206. If not, 200.
     const status = rangeHeader ? 206 : 200;
 
-    // 5. Convert Node.js Readable to Web ReadableStream (Required for Next.js App Router streaming)
-    const stream = new ReadableStream({
-      start(controller) {
-        readable.on('data', (chunk) => {
-          controller.enqueue(chunk);
-        });
-        readable.on('end', () => {
-          controller.close();
-        });
-        readable.on('error', (err) => {
-          controller.error(err);
-        });
-      },
-      cancel() {
-        readable.destroy();
-      }
-    });
-
-    return new NextResponse(stream, {
+    return new NextResponse(buffer, {
       status,
       headers,
     });
