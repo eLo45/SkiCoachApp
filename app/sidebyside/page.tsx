@@ -40,22 +40,11 @@ function SideBySidePageContent() {
   
   const [isStaging1, setIsStaging1] = useState(false);
   const [isStaging2, setIsStaging2] = useState(false);
-  
-  
-  const [downloadProgress1, setDownloadProgress1] = useState<number | null>(null);
-  const [downloadProgress2, setDownloadProgress2] = useState<number | null>(null);
-
-  const [isQueued1, setIsQueued1] = useState(false);
-  const [isQueued2, setIsQueued2] = useState(false);
-
-  // Download Queue Manager
-  const downloadQueueRef = useRef<{fileId: string, index: 1 | 2, fileName?: string}[]>([]);
-  const isDownloadingRef = useRef<boolean>(false);
 
   const abortController1Ref = useRef<AbortController | null>(null);
   const abortController2Ref = useRef<AbortController | null>(null);
 
-  // Cleanup blob URLs on unmount to prevent memory leaks
+  // Cleanup blob URLs on unmount to prevent memory leaks (for local files)
   useEffect(() => {
     return () => {
       if (videoSrc1 && videoSrc1.startsWith('blob:')) URL.revokeObjectURL(videoSrc1);
@@ -69,97 +58,13 @@ function SideBySidePageContent() {
     setSelectedDayFolderId(folderId);
   };
 
-  
-  const processDownloadQueue = useCallback(async () => {
-      if (isDownloadingRef.current || downloadQueueRef.current.length === 0) return;
-
-      isDownloadingRef.current = true;
-      const task = downloadQueueRef.current.shift()!;
-      
-      const { fileId, index, fileName } = task;
-      
-      const setProgress = index === 1 ? setDownloadProgress1 : setDownloadProgress2;
-      const setIsQueued = index === 1 ? setIsQueued1 : setIsQueued2;
-      const setSrc = index === 1 ? setVideoSrc1 : setVideoSrc2;
-      const setLoaded = index === 1 ? setIsVideo1Loaded : setIsVideo2Loaded;
-      const currentSrc = index === 1 ? videoSrc1 : videoSrc2;
-      const videoRef = index === 1 ? video1Ref : video2Ref;
-      const abortRef = index === 1 ? abortController1Ref : abortController2Ref;
-
-      setIsQueued(false);
-      setProgress(0);
-
-      try {
-        const CHUNK_SIZE = 10 * 1024 * 1024; 
-        let start = 0;
-        let totalSize = 0;
-        const chunks: ArrayBuffer[] = [];
-
-        while (true) {
-          if (abortRef.current?.signal.aborted) throw new Error('Download cancelled');
-
-          const end = start + CHUNK_SIZE - 1;
-          const response = await fetch(`/api/gdrive/download?fileId=${fileId}`, {
-            headers: { 'Range': `bytes=${start}-${end}` }
-          });
-
-          if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
-
-          const contentRange = response.headers.get('Content-Range');
-          if (contentRange) {
-              const match = contentRange.match(/\/(\d+)/);
-              if (match) totalSize = parseInt(match[1], 10);
-          }
-
-          const arrayBuffer = await response.arrayBuffer();
-          if (abortRef.current?.signal.aborted) throw new Error('Download cancelled');
-
-          chunks.push(arrayBuffer);
-
-          const currentTotalLoaded = chunks.reduce((acc, c) => acc + c.byteLength, 0);
-          
-          if (totalSize > 0) {
-              setProgress(Math.round((currentTotalLoaded / totalSize) * 100));
-          }
-
-          if (response.status !== 206 || (totalSize > 0 && currentTotalLoaded >= totalSize) || arrayBuffer.byteLength === 0) {
-              break;
-          }
-
-          start += arrayBuffer.byteLength;
-        }
-
-        if (currentSrc && currentSrc.startsWith('blob:')) URL.revokeObjectURL(currentSrc);
-        const finalBlob = new Blob(chunks, { type: 'video/mp4' });
-        const blobUrl = URL.createObjectURL(finalBlob);
-        
-        setSrc(blobUrl);
-        setProgress(null);
-        
-        setTimeout(() => {
-            if (videoRef.current) videoRef.current.load();
-        }, 50);
-
-      } catch (err: any) {
-        if (err.message !== 'Download cancelled') {
-            console.error('Error downloading video in chunks:', err);
-            alert(`Download failed. Please try again. (${err.message})`);
-        }
-        setProgress(null);
-      } finally {
-        isDownloadingRef.current = false;
-        // Process next item in queue if it exists
-        processDownloadQueue();
-      }
-  }, [videoSrc1, videoSrc2]);
-
-  const handleVideoSelect = useCallback((fileId: string | null, index: 1 | 2, fileName?: string) => {
+  const handleVideoSelect = useCallback(async (fileId: string | null, index: 1 | 2, fileName?: string) => {
     const setStaged = index === 1 ? setStagedDriveVideo1 : setStagedDriveVideo2;
     const setSrc = index === 1 ? setVideoSrc1 : setVideoSrc2;
     const currentSrc = index === 1 ? videoSrc1 : videoSrc2;
     const abortRef = index === 1 ? abortController1Ref : abortController2Ref;
-    const setIsQueued = index === 1 ? setIsQueued1 : setIsQueued2;
-    const setProgress = index === 1 ? setDownloadProgress1 : setDownloadProgress2;
+    const setIsStaging = index === 1 ? setIsStaging1 : setIsStaging2;
+    const setLoaded = index === 1 ? setIsVideo1Loaded : setIsVideo2Loaded;
 
     if (fileName) setStaged({ name: fileName });
     else setStaged(null);
@@ -173,27 +78,36 @@ function SideBySidePageContent() {
     if (!fileId) {
       if (currentSrc && currentSrc.startsWith('blob:')) URL.revokeObjectURL(currentSrc);
       setSrc(null);
-      setProgress(null);
-      setIsQueued(false);
-      
-      // Also remove this index from the queue if it was pending
-      downloadQueueRef.current = downloadQueueRef.current.filter(task => task.index !== index);
+      setIsStaging(false);
+      setLoaded(false);
       return;
     }
     
-    // Add to queue and trigger processor
-    setIsQueued(true);
-    setProgress(null); // Clear progress if it was running
+    setIsStaging(true);
+    setLoaded(false);
+
+    try {
+      const response = await fetch(`/api/gdrive/download?fileId=${fileId}`, {
+        signal: abortRef.current.signal
+      });
+
+      if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
+
+      const data = await response.json();
+
+      if (currentSrc && currentSrc.startsWith('blob:')) URL.revokeObjectURL(currentSrc);
+      
+      setSrc(data.url);
+    } catch (err: any) {
+      if (err.name !== 'AbortError') {
+          console.error('Error fetching video URL:', err);
+          alert(`Failed to load video URL. Please try again. (${err.message})`);
+      }
+    } finally {
+      setIsStaging(false);
+    }
     
-    // Remove any existing pending tasks for this same slot so we don't download old clicks
-    downloadQueueRef.current = downloadQueueRef.current.filter(task => task.index !== index);
-    
-    downloadQueueRef.current.push({ fileId, index, fileName });
-    
-    // Start processing asynchronously
-    setTimeout(processDownloadQueue, 10);
-    
-  }, [processDownloadQueue, videoSrc1, videoSrc2]);
+  }, [videoSrc1, videoSrc2]);
 
 
   const handleFileChange = (e: ChangeEvent<HTMLInputElement>, videoNumber: 1 | 2) => {
@@ -361,35 +275,15 @@ function SideBySidePageContent() {
              </label>
           </div>
           
-          {downloadProgress1 !== null && (
-              <div className="w-full bg-gray-700 rounded-full h-2.5 mb-2 hidden">
-                  <div className="bg-blue-500 h-2.5 rounded-full transition-all duration-300" style={{ width: `${downloadProgress1}%` }}></div>
-              </div>
-          )}
-
           <div className="aspect-video bg-gray-800 rounded-lg flex items-center justify-center border border-gray-700 overflow-hidden relative">
-              {isQueued1 && downloadProgress1 === null && (
+              {isStaging1 && (
                   <div className="absolute inset-0 bg-black/80 flex flex-col items-center justify-center z-10 p-4 text-center">
-                      <div className="w-8 h-8 border-4 border-gray-500 border-t-transparent rounded-full animate-spin mb-3"></div>
-                      <span className="text-white font-bold mb-1 text-lg">Waiting in Queue...</span>
-                      <span className="text-xs text-gray-300">Another video is currently downloading to cache.</span>
-                  </div>
-              )}
-              {downloadProgress1 !== null && (
-                  <div className="absolute inset-0 bg-black/80 flex flex-col items-center justify-center z-10 p-4 text-center">
-                      <div className="relative flex items-center justify-center w-16 h-16 mb-4">
-                          <svg className="absolute w-full h-full text-gray-700" viewBox="0 0 36 36">
-                              <path className="text-gray-700" d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831" fill="none" stroke="currentColor" strokeWidth="3" strokeDasharray="100, 100" />
-                              <path className="text-blue-500 transition-all duration-300" d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831" fill="none" stroke="currentColor" strokeWidth="3" strokeDasharray={`${downloadProgress1}, 100`} />
-                          </svg>
-                          <svg className="w-6 h-6 text-blue-500 absolute" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"></path></svg>
-                      </div>
-                      <span className="text-white font-bold mb-1 text-xl">{downloadProgress1}%</span>
-                      <span className="text-xs text-gray-300">Downloading video locally for flawless scrubbing...</span>
+                      <div className="w-8 h-8 border-4 border-blue-500 border-t-transparent rounded-full animate-spin mb-3"></div>
+                      <span className="text-white font-bold mb-1">Loading Video...</span>
                   </div>
               )}
               {videoSrc1 ? (
-              <video key={videoSrc1} ref={video1Ref} src={videoSrc1} preload="metadata" onLoadedMetadata={() => handleLoadedMetadata(1)} onTimeUpdate={() => { if (video1Ref.current && !isPlaying) setCurrentTime1(video1Ref.current.currentTime); }} className="w-full h-full" controls={false} muted/>
+              <video key={videoSrc1} ref={video1Ref} src={videoSrc1} preload="auto" crossOrigin="anonymous" onLoadedMetadata={() => handleLoadedMetadata(1)} onTimeUpdate={() => { if (video1Ref.current && !isPlaying) setCurrentTime1(video1Ref.current.currentTime); }} className="w-full h-full" controls={false} muted/>
               ) : (
               <p className="text-gray-500">Video Player 1</p>
               )}
@@ -422,12 +316,11 @@ function SideBySidePageContent() {
               {isStaging2 && (
                   <div className="absolute inset-0 bg-black/80 flex flex-col items-center justify-center z-10 p-4 text-center">
                       <div className="w-8 h-8 border-4 border-green-500 border-t-transparent rounded-full animate-spin mb-3"></div>
-                      <span className="text-white font-bold mb-1">Staging Video...</span>
-                      <span className="text-xs text-gray-300">Copying to Cloud Cache for flawless scrubbing. Please wait a moment.</span>
+                      <span className="text-white font-bold mb-1">Loading Video...</span>
                   </div>
               )}
               {videoSrc2 ? (
-              <video key={videoSrc2} ref={video2Ref} src={videoSrc2} preload="metadata" onLoadedMetadata={() => handleLoadedMetadata(2)} onTimeUpdate={() => { if (video2Ref.current && !isPlaying) setCurrentTime2(video2Ref.current.currentTime); }} className="w-full h-full" controls={false} muted/>
+              <video key={videoSrc2} ref={video2Ref} src={videoSrc2} preload="auto" crossOrigin="anonymous" onLoadedMetadata={() => handleLoadedMetadata(2)} onTimeUpdate={() => { if (video2Ref.current && !isPlaying) setCurrentTime2(video2Ref.current.currentTime); }} className="w-full h-full" controls={false} muted/>
               ) : (
               <p className="text-gray-500">Video Player 2</p>
               )}

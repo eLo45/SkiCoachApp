@@ -16,5 +16,5 @@ This skill codifies the standard procedure for committing and deploying new chan
 3.  **Push to GitHub**:
     -   Run `git push origin main`.
 4.  **Deploy to Cloud Run**:
-    -   Run `gcloud run deploy ski-coach-app --source . --region us-central1 --project=eliottappfrontend --allow-unauthenticated`.
+    -   Run `gcloud run deploy ski-coach-app --source . --region us-central1 --project=eliottappfrontend --allow-unauthenticated --service-account=ski-coach-app-sa@eliottappfrontend.iam.gserviceaccount.com`. *(Note: Replace with the actual service account email if different, ensuring it has roles/storage.admin and roles/run.invoker)*
 5.  **Confirm Success**: Inform the user that the deployment is complete and the new version is live.
