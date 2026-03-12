@@ -41,11 +41,16 @@ function SideBySidePageContent() {
   const [downloadProgress1, setDownloadProgress1] = useState<number | null>(null);
   const [downloadProgress2, setDownloadProgress2] = useState<number | null>(null);
 
+  const abortController1Ref = useRef<AbortController | null>(null);
+  const abortController2Ref = useRef<AbortController | null>(null);
+
   // Cleanup blob URLs on unmount to prevent memory leaks
   useEffect(() => {
     return () => {
       if (videoSrc1 && videoSrc1.startsWith('blob:')) URL.revokeObjectURL(videoSrc1);
       if (videoSrc2 && videoSrc2.startsWith('blob:')) URL.revokeObjectURL(videoSrc2);
+      if (abortController1Ref.current) abortController1Ref.current.abort();
+      if (abortController2Ref.current) abortController2Ref.current.abort();
     };
   }, [videoSrc1, videoSrc2]);
 
@@ -60,6 +65,14 @@ function SideBySidePageContent() {
     const setStaged = index === 1 ? setStagedDriveVideo1 : setStagedDriveVideo2;
     const currentSrc = index === 1 ? videoSrc1 : videoSrc2;
     const videoRef = index === 1 ? video1Ref : video2Ref;
+    const abortRef = index === 1 ? abortController1Ref : abortController2Ref;
+
+    // Abort any existing download for this slot
+    if (abortRef.current) {
+        abortRef.current.abort();
+    }
+    abortRef.current = new AbortController();
+    const signal = abortRef.current.signal;
 
     setLoaded(false);
     setProgress(null);
@@ -78,18 +91,25 @@ function SideBySidePageContent() {
       const fileId = new URL(streamingUrl, window.location.origin).searchParams.get('fileId');
       if (!fileId) throw new Error("Invalid file ID");
 
-      const CHUNK_SIZE = 10 * 1024 * 1024; // 10MB chunks to safely bypass Cloud Run's 32MB limit
+      const CHUNK_SIZE = 25 * 1024 * 1024; // Increased to 25MB chunks to reduce network connection overhead
       let start = 0;
       let totalSize = 0;
+      let mimeType = 'video/mp4'; // default fallback
       const chunks: ArrayBuffer[] = [];
 
       while (true) {
+        if (signal.aborted) throw new Error('Download cancelled');
+
         const end = start + CHUNK_SIZE - 1;
         const response = await fetch(`/api/gdrive/download?fileId=${fileId}`, {
-          headers: { 'Range': `bytes=${start}-${end}` }
+          headers: { 'Range': `bytes=${start}-${end}` },
+          signal
         });
 
         if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
+
+        const fetchedMimeType = response.headers.get('Content-Type');
+        if (fetchedMimeType) mimeType = fetchedMimeType;
 
         const contentRange = response.headers.get('Content-Range');
         if (contentRange) {
@@ -98,6 +118,8 @@ function SideBySidePageContent() {
         }
 
         const arrayBuffer = await response.arrayBuffer();
+        if (signal.aborted) throw new Error('Download cancelled');
+
         chunks.push(arrayBuffer);
 
         const currentTotalLoaded = chunks.reduce((acc, c) => acc + c.byteLength, 0);
@@ -115,7 +137,9 @@ function SideBySidePageContent() {
       }
 
       if (currentSrc && currentSrc.startsWith('blob:')) URL.revokeObjectURL(currentSrc);
-      const finalBlob = new Blob(chunks, { type: 'video/mp4' });
+      
+      // Use the dynamic MIME type from the backend so QuickTime (.MOV) files aren't rejected by the browser
+      const finalBlob = new Blob(chunks, { type: mimeType });
       const blobUrl = URL.createObjectURL(finalBlob);
       
       setSrc(blobUrl);
@@ -126,6 +150,10 @@ function SideBySidePageContent() {
       }, 50);
 
     } catch (err: any) {
+      if (err.message === 'Download cancelled' || err.name === 'AbortError') {
+          console.log(`Download cancelled for video ${index}`);
+          return; // Silently exit if aborted by user clicking a new video
+      }
       console.error('Error downloading video in chunks:', err);
       setProgress(null);
       alert(`Download failed. Please try again. (${err.message})`);
