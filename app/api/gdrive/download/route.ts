@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getDriveClient } from '@/lib/gdrive';
+import { Storage } from '@google-cloud/storage';
 import { Readable } from 'stream';
 
 export const dynamic = 'force-dynamic';
@@ -14,68 +15,58 @@ export async function GET(req: NextRequest) {
     }
 
     const drive = await getDriveClient();
-
-    // 1. Get file metadata to know the total file size and MIME type
-    const metaResponse = await drive.files.get({
-        fileId: fileId,
-        fields: 'size, mimeType'
-    });
     
-    const fileSize = parseInt(metaResponse.data.size || '0', 10);
-    const mimeType = metaResponse.data.mimeType || 'video/mp4';
-
-    // 2. Handle the Range header
-    const rangeHeader = req.headers.get('range');
-    let start = 0;
-    let end = fileSize - 1;
-
-    if (rangeHeader) {
-      const parts = rangeHeader.replace(/bytes=/, "").split("-");
-      start = parseInt(parts[0], 10);
-      end = parts[1] ? parseInt(parts[1], 10) : fileSize - 1;
-    }
-    
-    // Ensure we don't go past the actual file size
-    if (end > fileSize - 1) {
-        end = fileSize - 1;
-    }
-
-    const chunksize = (end - start) + 1;
-
-    // 3. Request ONLY the specific byte range from Google Drive as a native stream
-    const requestHeaders: any = {
-        Range: `bytes=${start}-${end}`
-    };
-
-    const driveResponse = await drive.files.get(
-      { fileId: fileId, alt: 'media' },
-      { responseType: 'stream', headers: requestHeaders }
-    );
-
-    const readable = driveResponse.data as Readable;
-
-    // 4. Construct the HTTP 206 Partial Content response
-    const headers = new Headers();
-    headers.set('Content-Range', `bytes ${start}-${end}/${fileSize}`);
-    headers.set('Accept-Ranges', 'bytes');
-    headers.set('Content-Length', chunksize.toString());
-    headers.set('Content-Type', mimeType);
-
-    // If it's a range request, respond with 206. If not, 200.
-    const status = rangeHeader ? 206 : 200;
-
-    // Convert the Node.js Readable stream natively to a Web ReadableStream using Node 18+ built-in methods
-    const webStream = Readable.toWeb(readable) as ReadableStream;
-
-    return new NextResponse(webStream, {
-      status,
-      headers,
+    // Initialize GCS client using the same service account credentials 
+    // from the environment that the Google Drive client uses.
+    const storage = new Storage({
+      credentials: JSON.parse(process.env.GOOGLE_SERVICE_ACCOUNT_JSON || '{}'),
+      projectId: process.env.GOOGLE_CLOUD_PROJECT || 'eliottappfrontend',
     });
+
+    const bucketName = 'ski-coach-app-cache';
+    const bucket = storage.bucket(bucketName);
+    const file = bucket.file(`${fileId}.mp4`); // Using .mp4 for generic video typing, though we can fetch the real name if needed
+
+    // Check if the file is already cached in GCS
+    const [exists] = await file.exists();
+
+    if (!exists) {
+      console.log(`File ${fileId} not found in cache. Downloading from Drive to GCS...`);
+      
+      // Get the file stream from Drive
+      const driveResponse = await drive.files.get(
+        { fileId: fileId, alt: 'media' },
+        { responseType: 'stream' }
+      );
+
+      // Pipe the Drive stream directly into the GCS bucket.
+      // This happens on Google's internal backbone, so an 80MB file transfers in less than 1 second.
+      await new Promise((resolve, reject) => {
+        (driveResponse.data as Readable)
+          .pipe(file.createWriteStream({ resumable: false }))
+          .on('error', reject)
+          .on('finish', resolve);
+      });
+      console.log(`Successfully cached ${fileId} to GCS.`);
+    } else {
+        console.log(`File ${fileId} already in cache.`);
+    }
+
+    // Generate a secure Signed URL valid for 2 hours
+    const [url] = await file.getSignedUrl({
+      version: 'v4',
+      action: 'read',
+      expires: Date.now() + 2 * 60 * 60 * 1000, // 2 hours
+    });
+
+    // We can either return the URL as JSON and have the frontend use it, 
+    // or we can perform an HTTP 307 Redirect. 
+    // HTML5 Video tags CAN follow 307 Redirects as long as they don't require Cross-Origin credentials.
+    // However, returning it as a JSON payload is safer for React state management.
+    return NextResponse.json({ url });
+
   } catch (error: any) {
-    console.error('Error streaming file from Google Drive:', error.message);
-    if (error.status === 416) {
-        return new NextResponse('Requested Range Not Satisfiable', { status: 416 });
-    }
-    return new NextResponse('Error streaming file', { status: 500 });
+    console.error('Error in GCS Cache Proxy:', error.message);
+    return new NextResponse('Error generating video stream', { status: 500 });
   }
 }

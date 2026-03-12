@@ -79,23 +79,24 @@ function SideBySidePageContent() {
 
     if (currentSrc && currentSrc.startsWith('blob:')) URL.revokeObjectURL(currentSrc);
       
-    // We need to fetch the API key from the backend at runtime because NEXT_PUBLIC variables 
-    // injected via Cloud Run deployment flags are not available in the statically built client bundle.
+    // We fetch a secure Signed URL from our backend proxy.
+    // The backend instantly transfers the file from Google Drive to Google Cloud Storage (GCS)
+    // and returns a GCS URL. This bypasses Cloud Run payload limits and provides perfect streaming.
     try {
-        const tokenRes = await fetch('/api/gdrive/token');
-        if (!tokenRes.ok) throw new Error('Failed to fetch API key');
-        const { apiKey } = await tokenRes.json();
+        const urlRes = await fetch(`/api/gdrive/download?fileId=${fileId}`);
+        if (!urlRes.ok) throw new Error('Failed to fetch streaming URL');
         
-        if (!apiKey) throw new Error('API key missing from server');
+        const data = await urlRes.json();
+        if (!data.url) throw new Error('Invalid URL returned from proxy');
         
-        const streamingUrl = `https://www.googleapis.com/drive/v3/files/${fileId}?alt=media&key=${apiKey}`;
-        setSrc(streamingUrl);
+        setSrc(data.url);
           
         setTimeout(() => {
             if (videoRef.current) videoRef.current.load();
         }, 50);
     } catch (e) {
         console.error("Error setting up video stream:", e);
+        alert("Error loading video stream.");
     }
 
   }, [videoSrc1, videoSrc2]);
