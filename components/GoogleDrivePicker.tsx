@@ -14,7 +14,6 @@ const GoogleDrivePicker: React.FC<GoogleDrivePickerProps> = ({ onVideoSelect, se
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   
-  const [activeSlot, setActiveSlot] = useState<1 | 2>(1);
   const [warningMsg, setWarningMsg] = useState<string | null>(null);
 
   useEffect(() => {
@@ -44,20 +43,25 @@ const GoogleDrivePicker: React.FC<GoogleDrivePickerProps> = ({ onVideoSelect, se
   const handleVideoClick = (fileId: string, fileName: string, webContentLink: string) => {
     setWarningMsg(null);
 
-    if (activeSlot === 1) {
-      if (selectedVideo1Id === fileId) {
-        onVideoSelect(null, 1);
-        return;
-      }
+    // Deselection Logic
+    if (selectedVideo1Id === fileId) {
+      onVideoSelect(null, 1);
+      return;
+    }
+    if (selectedVideo2Id === fileId) {
+      onVideoSelect(null, 2);
+      return;
+    }
+
+    // Sequential Auto-Fill Logic
+    if (!selectedVideo1Id) {
       onVideoSelect(fileId, 1, fileName);
-      setActiveSlot(2); // Automatically switch to next slot for rapid selecting
-    } else {
-      if (selectedVideo2Id === fileId) {
-        onVideoSelect(null, 2);
-        return;
-      }
+    } else if (!selectedVideo2Id) {
       onVideoSelect(fileId, 2, fileName);
-      setActiveSlot(1);
+    } else {
+      // Both slots are full
+      setWarningMsg("Both video slots are full. Deselect a video first by clicking on it again.");
+      setTimeout(() => setWarningMsg(null), 3000);
     }
   };
 
@@ -75,24 +79,22 @@ const GoogleDrivePicker: React.FC<GoogleDrivePickerProps> = ({ onVideoSelect, se
         <div className="flex flex-col md:flex-row md:items-center justify-between mb-4 gap-4">
             <div>
                 <h3 className="text-lg font-semibold text-white">Available Videos</h3>
-                <p className="text-xs text-gray-400">Select a slot below, then click a video to assign it.</p>
+                <p className="text-xs text-gray-400">Click a video to assign it. Click it again to remove it.</p>
             </div>
             
-            <div className="flex bg-gray-800 p-1 rounded-lg">
-                <button 
-                  onClick={() => setActiveSlot(1)} 
-                  className={`px-4 py-2 rounded-md text-sm font-bold transition-colors flex items-center gap-2 ${activeSlot === 1 ? 'bg-blue-600 text-white' : 'text-gray-400 hover:text-white hover:bg-gray-700'}`}
+            <div className="flex bg-gray-800 p-1 rounded-lg gap-1">
+                <div 
+                  className={`px-4 py-2 rounded-md text-sm font-bold flex items-center gap-2 ${selectedVideo1Id ? 'bg-blue-600 text-white shadow-md' : 'bg-gray-700/50 text-gray-400'}`}
                 >
-                  <span className={`w-3 h-3 rounded-full ${activeSlot === 1 ? 'bg-white' : 'bg-blue-500'}`}></span>
+                  <span className={`w-3 h-3 rounded-full ${selectedVideo1Id ? 'bg-white' : 'bg-blue-500/50'}`}></span>
                   {selectedVideo1Id ? 'Skier 1 Selected' : 'Skier 1 Not Selected'}
-                </button>
-                <button 
-                  onClick={() => setActiveSlot(2)} 
-                  className={`px-4 py-2 rounded-md text-sm font-bold transition-colors flex items-center gap-2 ${activeSlot === 2 ? 'bg-green-600 text-white' : 'text-gray-400 hover:text-white hover:bg-gray-700'}`}
+                </div>
+                <div 
+                  className={`px-4 py-2 rounded-md text-sm font-bold flex items-center gap-2 ${selectedVideo2Id ? 'bg-green-600 text-white shadow-md' : 'bg-gray-700/50 text-gray-400'}`}
                 >
-                  <span className={`w-3 h-3 rounded-full ${activeSlot === 2 ? 'bg-white' : 'bg-green-500'}`}></span>
+                  <span className={`w-3 h-3 rounded-full ${selectedVideo2Id ? 'bg-white' : 'bg-green-500/50'}`}></span>
                   {selectedVideo2Id ? 'Skier 2 Selected' : 'Skier 2 Not Selected'}
-                </button>
+                </div>
             </div>
         </div>
 
