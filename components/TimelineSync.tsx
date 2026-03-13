@@ -8,17 +8,18 @@ interface DraggableVideoProps {
   duration: number; // total duration in seconds
   markers: number[]; // timestamps of sync points
   onSeek: (newTime: number) => void;
+  onScrubStart: () => void;
   color: string;
 }
 
-const DraggableVideo: React.FC<DraggableVideoProps> = ({ videoName, position, duration, markers, onSeek, color }) => {
+const DraggableVideo: React.FC<DraggableVideoProps> = ({ videoName, position, duration, markers, onSeek, onScrubStart, color }) => {
   const containerRef = useRef<HTMLDivElement>(null);
 
   const handleMouseDown = (event: React.MouseEvent | React.TouchEvent) => {
+    onScrubStart(); // Stop playback immediately
     updatePosition(event);
-    
-    const onMouseMove = (e: MouseEvent | TouchEvent) => updatePosition(e);
-    const onMouseUp = () => {
+
+    const onMouseMove = (e: MouseEvent | TouchEvent) => updatePosition(e);    const onMouseUp = () => {
       window.removeEventListener('mousemove', onMouseMove);
       window.removeEventListener('mouseup', onMouseUp);
       window.removeEventListener('touchmove', onMouseMove);
@@ -106,31 +107,33 @@ interface TimelineSyncProps {
     markers2: number[];
     onSeek1: (time: number) => void;
     onSeek2: (time: number) => void;
+    onScrubStart: () => void;
 }
 
 const TimelineSync: React.FC<TimelineSyncProps> = ({
-    video1Name, video2Name, pos1, pos2, dur1, dur2, markers1, markers2, onSeek1, onSeek2
+    video1Name, video2Name, pos1, pos2, dur1, dur2, markers1, markers2, onSeek1, onSeek2, onScrubStart
 }) => {
     return (
         <div className="w-full max-w-4xl mx-auto mt-8 p-4 bg-gray-900 rounded-xl border border-gray-800 shadow-2xl">
-            <DraggableVideo 
-              videoName={video1Name} 
-              position={pos1} 
-              duration={dur1} 
-              markers={markers1} 
-              onSeek={onSeek1} 
-              color="#4f46e5" 
+            <DraggableVideo
+              videoName={video1Name}
+              position={pos1}
+              duration={dur1}
+              markers={markers1}
+              onSeek={onSeek1}
+              onScrubStart={onScrubStart}
+              color="#4f46e5"
             />
-            <DraggableVideo 
-              videoName={video2Name} 
-              position={pos2} 
-              duration={dur2} 
-              markers={markers2} 
-              onSeek={onSeek2} 
-              color="#0891b2" 
+            <DraggableVideo
+              videoName={video2Name}
+              position={pos2}
+              duration={dur2}
+              markers={markers2}
+              onSeek={onSeek2}
+              onScrubStart={onScrubStart}
+              color="#0891b2"
             />
         </div>
     );
 };
-
 export default TimelineSync;

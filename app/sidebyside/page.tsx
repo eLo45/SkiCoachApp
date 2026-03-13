@@ -187,11 +187,18 @@ function SideBySidePageContent() {
       const s2 = syncsV2[activeOffsetIndex];
       
       const relativeToSync = v1.currentTime - s1;
-      const v2TargetTime = s2 + relativeToSync;
+      let v2TargetTime = s2 + relativeToSync;
+
+      // Clamp target time to valid video bounds to prevent fatal IndexSizeError crashes
+      v2TargetTime = Math.max(0, Math.min(v2TargetTime, v2.duration || 0));
 
       // Sync if drift > 0.05s
       if (Math.abs(video2Ref.current.currentTime - v2TargetTime) > 0.05) {
-        video2Ref.current.currentTime = v2TargetTime;
+        try {
+          video2Ref.current.currentTime = v2TargetTime;
+        } catch (e) {
+          console.warn("Failed to set video time, likely out of bounds:", e);
+        }
       }
     }
     
@@ -252,6 +259,13 @@ function SideBySidePageContent() {
     setSyncsV1([]);
     setSyncsV2([]);
   };
+
+  const handleScrubStart = useCallback(() => {
+    setIsPlaying(false);
+    if (animationFrameId.current) cancelAnimationFrame(animationFrameId.current);
+    if (video1Ref.current) video1Ref.current.pause();
+    if (video2Ref.current) video2Ref.current.pause();
+  }, []);
 
   const stepFrames = (frames: number) => {
     if (isPlaying || !video1Ref.current || !video2Ref.current) return;
@@ -490,6 +504,7 @@ function SideBySidePageContent() {
           markers2={syncsV2}
           onSeek1={handleManualSeek1}
           onSeek2={handleManualSeek2}
+          onScrubStart={handleScrubStart}
       />
       
       <div className="text-center mt-12 pb-12">
