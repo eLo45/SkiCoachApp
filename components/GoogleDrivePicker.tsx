@@ -84,14 +84,14 @@ const GoogleDrivePicker: React.FC<GoogleDrivePickerProps> = ({ onVideoSelect, se
                   className={`px-4 py-2 rounded-md text-sm font-bold transition-colors flex items-center gap-2 ${activeSlot === 1 ? 'bg-blue-600 text-white' : 'text-gray-400 hover:text-white hover:bg-gray-700'}`}
                 >
                   <span className={`w-3 h-3 rounded-full ${activeSlot === 1 ? 'bg-white' : 'bg-blue-500'}`}></span>
-                  Assign to Skier 1
+                  {selectedVideo1Id ? 'Skier 1 Selected' : 'Skier 1 Not Selected'}
                 </button>
                 <button 
                   onClick={() => setActiveSlot(2)} 
                   className={`px-4 py-2 rounded-md text-sm font-bold transition-colors flex items-center gap-2 ${activeSlot === 2 ? 'bg-green-600 text-white' : 'text-gray-400 hover:text-white hover:bg-gray-700'}`}
                 >
                   <span className={`w-3 h-3 rounded-full ${activeSlot === 2 ? 'bg-white' : 'bg-green-500'}`}></span>
-                  Assign to Skier 2
+                  {selectedVideo2Id ? 'Skier 2 Selected' : 'Skier 2 Not Selected'}
                 </button>
             </div>
         </div>

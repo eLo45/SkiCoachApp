@@ -62,6 +62,24 @@ function SideBySidePageContent() {
 
   const handleDaySelect = (folderId: string) => {
     setSelectedDayFolderId(folderId);
+    
+    // Completely wipe players and purge any local memory blobs when changing days
+    if (videoSrc1 && videoSrc1.startsWith('blob:')) URL.revokeObjectURL(videoSrc1);
+    if (videoSrc2 && videoSrc2.startsWith('blob:')) URL.revokeObjectURL(videoSrc2);
+    
+    setVideoSrc1(null);
+    setVideoSrc2(null);
+    setSelectedVideo1Id(null);
+    setSelectedVideo2Id(null);
+    setStagedDriveVideo1(null);
+    setStagedDriveVideo2(null);
+    setIsVideo1Loaded(false);
+    setIsVideo2Loaded(false);
+    setIsBuffering1(false);
+    setIsBuffering2(false);
+    
+    resetSlotState(1);
+    resetSlotState(2);
   };
 
   const resetSlotState = useCallback((index: 1 | 2) => {
