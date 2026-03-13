@@ -41,6 +41,9 @@ function SideBySidePageContent() {
   const [isStaging1, setIsStaging1] = useState(false);
   const [isStaging2, setIsStaging2] = useState(false);
 
+  const [selectedVideo1Id, setSelectedVideo1Id] = useState<string | null>(null);
+  const [selectedVideo2Id, setSelectedVideo2Id] = useState<string | null>(null);
+
   const abortController1Ref = useRef<AbortController | null>(null);
   const abortController2Ref = useRef<AbortController | null>(null);
 
@@ -58,6 +61,20 @@ function SideBySidePageContent() {
     setSelectedDayFolderId(folderId);
   };
 
+  const resetSlotState = useCallback((index: 1 | 2) => {
+    if (index === 1) {
+      setSyncsV1([]);
+      setCurrentTime1(0);
+      setDuration1(0);
+      if (video1Ref.current) video1Ref.current.currentTime = 0;
+    } else {
+      setSyncsV2([]);
+      setCurrentTime2(0);
+      setDuration2(0);
+      if (video2Ref.current) video2Ref.current.currentTime = 0;
+    }
+  }, []);
+
   const handleVideoSelect = useCallback(async (fileId: string | null, index: 1 | 2, fileName?: string) => {
     const setStaged = index === 1 ? setStagedDriveVideo1 : setStagedDriveVideo2;
     const setSrc = index === 1 ? setVideoSrc1 : setVideoSrc2;
@@ -65,9 +82,14 @@ function SideBySidePageContent() {
     const abortRef = index === 1 ? abortController1Ref : abortController2Ref;
     const setIsStaging = index === 1 ? setIsStaging1 : setIsStaging2;
     const setLoaded = index === 1 ? setIsVideo1Loaded : setIsVideo2Loaded;
+    const setSelectedVideoId = index === 1 ? setSelectedVideo1Id : setSelectedVideo2Id;
 
     if (fileName) setStaged({ name: fileName });
     else setStaged(null);
+
+    // Always clear the specific slot's playback/sync state when a new video is chosen or deselected
+    resetSlotState(index);
+    setSelectedVideoId(fileId);
 
     // Abort existing downloads for this slot
     if (abortRef.current) {
@@ -114,14 +136,17 @@ function SideBySidePageContent() {
     const file = e.target.files?.[0];
     if (file) {
       const url = URL.createObjectURL(file);
+      resetSlotState(videoNumber);
       if (videoNumber === 1) {
         setIsVideo1Loaded(false);
         setVideoSrc1(url);
         setStagedDriveVideo1({name: file.name}); 
+        setSelectedVideo1Id(null);
       } else {
         setIsVideo2Loaded(false);
         setVideoSrc2(url);
         setStagedDriveVideo2({name: file.name});
+        setSelectedVideo2Id(null);
       }
     }
   };
@@ -249,21 +274,60 @@ function SideBySidePageContent() {
     setCurrentTime2(time);
   };
 
+  const [isDrawerOpen, setIsDrawerOpen] = useState(true);
+
   return (
-    <div className="w-full max-w-7xl">
-      <div className="flex justify-between items-center mb-8">
-        <h1 className="text-4xl font-bold text-center w-full">
-          Side-by-Side Video Analysis
+    <div className="w-full max-w-7xl mx-auto flex flex-col items-center">
+      {/* Mobile Landscape Prompt */}
+      <div className="md:hidden w-full bg-blue-900/50 text-blue-200 text-xs text-center py-2 px-4 mb-4 rounded-lg flex items-center justify-center gap-2 border border-blue-800">
+        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 18h.01M8 21h8a2 2 0 002-2V5a2 2 0 00-2-2H8a2 2 0 00-2 2v14a2 2 0 002 2z"></path></svg>
+        Rotate phone to landscape for the best side-by-side experience
+      </div>
+
+      <div className="flex justify-between items-center mb-4 w-full">
+        <h1 className="text-2xl md:text-4xl font-bold text-center w-full">
+          Side-by-Side Analysis
         </h1>
       </div>
 
-      <div className="my-4 p-4 border border-gray-700 rounded-lg">
-        <CalendarView onDaySelect={handleDaySelect} rootFolderId={rootFolderId} />
-      </div>
-      
-      <GoogleDrivePicker onVideoSelect={handleVideoSelect} selectedDayFolderId={selectedDayFolderId} />
+      {/* Drawer Toggle Button for Mobile */}
+      <button 
+        onClick={() => setIsDrawerOpen(!isDrawerOpen)}
+        className="md:hidden w-full bg-gray-800 hover:bg-gray-700 text-white font-bold py-3 px-4 rounded-lg border border-gray-600 mb-4 flex justify-between items-center transition-colors"
+      >
+        <span>Select Videos from Drive</span>
+        <svg className={`w-5 h-5 transform transition-transform ${isDrawerOpen ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 9l-7 7-7-7"></path></svg>
+      </button>
 
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-8">
+      {/* Collapsible Picker Section */}
+      <div className={`${isDrawerOpen ? 'block' : 'hidden'} md:block w-full transition-all duration-300 ease-in-out`}>
+        <div className="my-2 p-4 border border-gray-700 rounded-lg bg-gray-900/50">
+          <CalendarView onDaySelect={handleDaySelect} rootFolderId={rootFolderId} />
+        </div>
+        
+        <GoogleDrivePicker 
+          onVideoSelect={(fileId, index, fileName) => {
+            handleVideoSelect(fileId, index, fileName);
+            // Optionally close drawer automatically on mobile if both are selected, but letting user close it is safer.
+          }} 
+          selectedDayFolderId={selectedDayFolderId} 
+          selectedVideo1Id={selectedVideo1Id}
+          selectedVideo2Id={selectedVideo2Id}
+        />
+        
+        {/* Close button at the bottom of the drawer for mobile */}
+        {isDrawerOpen && (
+          <button 
+            onClick={() => setIsDrawerOpen(false)}
+            className="md:hidden w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 px-4 rounded-lg mt-4 shadow-lg"
+          >
+            Done Selecting - Go to Players
+          </button>
+        )}
+      </div>
+
+      {/* Video Players Section (Sticky on Mobile if in Portrait) */}
+      <div className="w-full grid grid-cols-1 md:grid-cols-2 gap-2 md:gap-4 mt-6 md:mt-8 sticky top-0 z-40 bg-black/90 backdrop-blur-sm pt-2 pb-4 md:static md:bg-transparent md:pt-0 md:pb-0">
         <div className="space-y-2">
           <div className="flex justify-between items-center px-1">
              <label className="text-sm font-medium text-blue-400">
@@ -275,15 +339,25 @@ function SideBySidePageContent() {
              </label>
           </div>
           
-          <div className="aspect-video bg-gray-800 rounded-lg flex items-center justify-center border border-gray-700 overflow-hidden relative">
+          <div className="aspect-video bg-gray-800 rounded-lg flex items-center justify-center border border-gray-700 overflow-hidden relative group">
+              {/* Mobile Double Tap Zones */}
+              <div 
+                className="absolute inset-y-0 left-0 w-1/3 z-20 md:hidden" 
+                onDoubleClick={() => stepFrames(-2)}
+              ></div>
+              <div 
+                className="absolute inset-y-0 right-0 w-1/3 z-20 md:hidden" 
+                onDoubleClick={() => stepFrames(2)}
+              ></div>
+
               {isStaging1 && (
-                  <div className="absolute inset-0 bg-black/80 flex flex-col items-center justify-center z-10 p-4 text-center">
+                  <div className="absolute inset-0 bg-black/80 flex flex-col items-center justify-center z-30 p-4 text-center">
                       <div className="w-8 h-8 border-4 border-blue-500 border-t-transparent rounded-full animate-spin mb-3"></div>
                       <span className="text-white font-bold mb-1">Loading Video...</span>
                   </div>
               )}
               {videoSrc1 ? (
-              <video key={videoSrc1} ref={video1Ref} src={videoSrc1} preload="auto" crossOrigin="anonymous" onLoadedMetadata={() => handleLoadedMetadata(1)} onTimeUpdate={() => { if (video1Ref.current && !isPlaying) setCurrentTime1(video1Ref.current.currentTime); }} className="w-full h-full" controls={false} muted/>
+              <video key={videoSrc1} ref={video1Ref} src={videoSrc1} preload="auto" crossOrigin="anonymous" onLoadedMetadata={() => handleLoadedMetadata(1)} onTimeUpdate={() => { if (video1Ref.current && !isPlaying) setCurrentTime1(video1Ref.current.currentTime); }} className="w-full h-full z-10" controls={false} muted playsInline/>
               ) : (
               <p className="text-gray-500">Video Player 1</p>
               )}
@@ -291,11 +365,11 @@ function SideBySidePageContent() {
           <button 
             onClick={() => handleMarkSync(1)} 
             disabled={!videoSrc1 || syncsV1.length >= 2} 
-            className="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-2 rounded-lg disabled:opacity-50"
+            className="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-2 md:py-3 rounded-lg disabled:opacity-50 text-sm md:text-base transition-colors"
           >
               {syncsV1.length === 0 ? "Mark Sync Point 1" : syncsV1.length === 1 ? "Mark Sync Point 2" : "Sync Points Full"}
           </button>
-          <div className="flex justify-between text-xs text-gray-400 px-2">
+          <div className="flex justify-between text-xs text-gray-400 px-2 pb-2 md:pb-0">
             <span>Sync 1: {syncsV1[0]?.toFixed(2) || "---"}</span>
             <span>Sync 2: {syncsV1[1]?.toFixed(2) || "---"}</span>
           </div>
@@ -312,15 +386,25 @@ function SideBySidePageContent() {
              </label>
           </div>
 
-          <div className="aspect-video bg-gray-800 rounded-lg flex items-center justify-center border border-gray-700 overflow-hidden relative">
+          <div className="aspect-video bg-gray-800 rounded-lg flex items-center justify-center border border-gray-700 overflow-hidden relative group">
+              {/* Mobile Double Tap Zones */}
+              <div 
+                className="absolute inset-y-0 left-0 w-1/3 z-20 md:hidden" 
+                onDoubleClick={() => stepFrames(-2)}
+              ></div>
+              <div 
+                className="absolute inset-y-0 right-0 w-1/3 z-20 md:hidden" 
+                onDoubleClick={() => stepFrames(2)}
+              ></div>
+
               {isStaging2 && (
-                  <div className="absolute inset-0 bg-black/80 flex flex-col items-center justify-center z-10 p-4 text-center">
+                  <div className="absolute inset-0 bg-black/80 flex flex-col items-center justify-center z-30 p-4 text-center">
                       <div className="w-8 h-8 border-4 border-green-500 border-t-transparent rounded-full animate-spin mb-3"></div>
                       <span className="text-white font-bold mb-1">Loading Video...</span>
                   </div>
               )}
               {videoSrc2 ? (
-              <video key={videoSrc2} ref={video2Ref} src={videoSrc2} preload="auto" crossOrigin="anonymous" onLoadedMetadata={() => handleLoadedMetadata(2)} onTimeUpdate={() => { if (video2Ref.current && !isPlaying) setCurrentTime2(video2Ref.current.currentTime); }} className="w-full h-full" controls={false} muted/>
+              <video key={videoSrc2} ref={video2Ref} src={videoSrc2} preload="auto" crossOrigin="anonymous" onLoadedMetadata={() => handleLoadedMetadata(2)} onTimeUpdate={() => { if (video2Ref.current && !isPlaying) setCurrentTime2(video2Ref.current.currentTime); }} className="w-full h-full z-10" controls={false} muted playsInline/>
               ) : (
               <p className="text-gray-500">Video Player 2</p>
               )}
@@ -328,11 +412,11 @@ function SideBySidePageContent() {
            <button 
             onClick={() => handleMarkSync(2)} 
             disabled={!videoSrc2 || syncsV2.length >= 2} 
-            className="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-2 rounded-lg disabled:opacity-50"
+            className="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-2 md:py-3 rounded-lg disabled:opacity-50 text-sm md:text-base transition-colors"
           >
               {syncsV2.length === 0 ? "Mark Sync Point 1" : syncsV2.length === 1 ? "Mark Sync Point 2" : "Sync Points Full"}
           </button>
-          <div className="flex justify-between text-xs text-gray-400 px-2">
+          <div className="flex justify-between text-xs text-gray-400 px-2 pb-2 md:pb-0">
             <span>Sync 1: {syncsV2[0]?.toFixed(2) || "---"}</span>
             <span>Sync 2: {syncsV2[1]?.toFixed(2) || "---"}</span>
           </div>

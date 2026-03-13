@@ -5,17 +5,16 @@ import React, { useState, useEffect } from 'react';
 interface GoogleDrivePickerProps {
   onVideoSelect: (fileId: string | null, index: 1 | 2, fileName?: string) => void;
   selectedDayFolderId: string | null;
+  selectedVideo1Id: string | null;
+  selectedVideo2Id: string | null;
 }
 
-const GoogleDrivePicker: React.FC<GoogleDrivePickerProps> = ({ onVideoSelect, selectedDayFolderId }) => {
+const GoogleDrivePicker: React.FC<GoogleDrivePickerProps> = ({ onVideoSelect, selectedDayFolderId, selectedVideo1Id, selectedVideo2Id }) => {
   const [videos, setVideos] = useState<any[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   
-  // Track selection by file ID
-  const [selectedVideo1, setSelectedVideo1] = useState<string | null>(null);
-  const [selectedVideo2, setSelectedVideo2] = useState<string | null>(null);
-  
+  const [activeSlot, setActiveSlot] = useState<1 | 2>(1);
   const [warningMsg, setWarningMsg] = useState<string | null>(null);
 
   useEffect(() => {
@@ -38,40 +37,27 @@ const GoogleDrivePicker: React.FC<GoogleDrivePickerProps> = ({ onVideoSelect, se
       };
 
       fetchVideos();
-      // Reset selections when folder changes
-      setSelectedVideo1(null);
-      setSelectedVideo2(null);
       setWarningMsg(null);
-      onVideoSelect(null, 1);
-      onVideoSelect(null, 2);
     }
   }, [selectedDayFolderId]); // Keep onVideoSelect out to prevent infinite re-renders
 
   const handleVideoClick = (fileId: string, fileName: string, webContentLink: string) => {
     setWarningMsg(null);
 
-    // Deselect logic
-    if (selectedVideo1 === fileId) {
-      setSelectedVideo1(null);
-      onVideoSelect(null, 1);
-      return;
-    }
-    if (selectedVideo2 === fileId) {
-      setSelectedVideo2(null);
-      onVideoSelect(null, 2);
-      return;
-    }
-
-    if (!selectedVideo1) {
-      setSelectedVideo1(fileId);
+    if (activeSlot === 1) {
+      if (selectedVideo1Id === fileId) {
+        onVideoSelect(null, 1);
+        return;
+      }
       onVideoSelect(fileId, 1, fileName);
-    } else if (!selectedVideo2) {
-      setSelectedVideo2(fileId);
-      onVideoSelect(fileId, 2, fileName);
+      setActiveSlot(2); // Automatically switch to next slot for rapid selecting
     } else {
-      // Both slots full
-      setWarningMsg("Both video slots are full. Deselect a video first by clicking on it again.");
-      setTimeout(() => setWarningMsg(null), 3000);
+      if (selectedVideo2Id === fileId) {
+        onVideoSelect(null, 2);
+        return;
+      }
+      onVideoSelect(fileId, 2, fileName);
+      setActiveSlot(1);
     }
   };
 
@@ -86,18 +72,27 @@ const GoogleDrivePicker: React.FC<GoogleDrivePickerProps> = ({ onVideoSelect, se
 
   return (
     <div className="mt-4 p-4 border border-gray-700 rounded-lg">
-        <div className="flex flex-col md:flex-row md:items-center justify-between mb-4 gap-2">
+        <div className="flex flex-col md:flex-row md:items-center justify-between mb-4 gap-4">
             <div>
                 <h3 className="text-lg font-semibold text-white">Available Videos</h3>
-                <p className="text-xs text-gray-400">click once to select, twice to unselect, skier 1 first</p>
+                <p className="text-xs text-gray-400">Select a slot below, then click a video to assign it.</p>
             </div>
-            <div className="flex gap-4 text-sm">
-                <div className="flex items-center gap-2">
-                    <span className="w-3 h-3 rounded-full bg-blue-500"></span> Skier 1
-                </div>
-                <div className="flex items-center gap-2">
-                    <span className="w-3 h-3 rounded-full bg-green-500"></span> Skier 2
-                </div>
+            
+            <div className="flex bg-gray-800 p-1 rounded-lg">
+                <button 
+                  onClick={() => setActiveSlot(1)} 
+                  className={`px-4 py-2 rounded-md text-sm font-bold transition-colors flex items-center gap-2 ${activeSlot === 1 ? 'bg-blue-600 text-white' : 'text-gray-400 hover:text-white hover:bg-gray-700'}`}
+                >
+                  <span className={`w-3 h-3 rounded-full ${activeSlot === 1 ? 'bg-white' : 'bg-blue-500'}`}></span>
+                  Assign to Skier 1
+                </button>
+                <button 
+                  onClick={() => setActiveSlot(2)} 
+                  className={`px-4 py-2 rounded-md text-sm font-bold transition-colors flex items-center gap-2 ${activeSlot === 2 ? 'bg-green-600 text-white' : 'text-gray-400 hover:text-white hover:bg-gray-700'}`}
+                >
+                  <span className={`w-3 h-3 rounded-full ${activeSlot === 2 ? 'bg-white' : 'bg-green-500'}`}></span>
+                  Assign to Skier 2
+                </button>
             </div>
         </div>
 
@@ -111,12 +106,13 @@ const GoogleDrivePicker: React.FC<GoogleDrivePickerProps> = ({ onVideoSelect, se
 
         <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-4 max-h-96 overflow-y-auto p-2">
         {videos.map((video) => {
-            const isSelected1 = selectedVideo1 === video.id;
-            const isSelected2 = selectedVideo2 === video.id;
+            const isSelected1 = selectedVideo1Id === video.id;
+            const isSelected2 = selectedVideo2Id === video.id;
 
             let borderClass = 'border-gray-600 hover:border-gray-400';
-            if (isSelected1) borderClass = 'border-blue-500 shadow-[0_0_10px_rgba(59,130,246,0.5)]';
-            if (isSelected2) borderClass = 'border-green-500 shadow-[0_0_10px_rgba(34,197,94,0.5)]';
+            if (isSelected1 && isSelected2) borderClass = 'border-purple-500 shadow-[0_0_10px_rgba(168,85,247,0.5)]';
+            else if (isSelected1) borderClass = 'border-blue-500 shadow-[0_0_10px_rgba(59,130,246,0.5)]';
+            else if (isSelected2) borderClass = 'border-green-500 shadow-[0_0_10px_rgba(34,197,94,0.5)]';
 
             return (
                 <div 
