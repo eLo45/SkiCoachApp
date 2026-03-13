@@ -119,7 +119,31 @@ function SideBySidePageContent() {
 
       if (currentSrc && currentSrc.startsWith('blob:')) URL.revokeObjectURL(currentSrc);
       
-      setSrc(data.url);
+      // Determine if we are on a mobile device based on screen width or user agent
+      const isMobile = typeof window !== 'undefined' && (/iPhone|iPad|iPod|Android/i.test(navigator.userAgent) || window.innerWidth < 768);
+
+      if (isMobile) {
+        // Mobile Strategy: Force download into memory Blob to bypass OS data-saver blocks
+        console.log(`Mobile device detected. Forcing Blob download for Slot ${index}...`);
+        
+        const videoResponse = await fetch(data.url, { signal: abortRef.current.signal });
+        if (!videoResponse.ok) throw new Error('Failed to fetch video blob data');
+        
+        const videoBlob = await videoResponse.blob();
+        
+        if (abortRef.current.signal.aborted) return;
+
+        // On mobile, the GCS proxy defaults to 'application/octet-stream' sometimes. Force it to video/mp4.
+        const forcedMp4Blob = new Blob([videoBlob], { type: 'video/mp4' });
+        const blobUrl = URL.createObjectURL(forcedMp4Blob);
+        
+        setSrc(blobUrl);
+      } else {
+        // Desktop Strategy: Pass signed URL directly for highly-efficient HTTP Range streaming
+        console.log(`Desktop device detected. Streaming directly for Slot ${index}...`);
+        setSrc(data.url);
+      }
+
     } catch (err: any) {
       if (err.name !== 'AbortError') {
           console.error('Error fetching video URL:', err);
@@ -129,7 +153,7 @@ function SideBySidePageContent() {
       setIsStaging(false);
     }
     
-  }, [videoSrc1, videoSrc2]);
+  }, [videoSrc1, videoSrc2, resetSlotState]);
 
 
   const handleFileChange = (e: ChangeEvent<HTMLInputElement>, videoNumber: 1 | 2) => {
