@@ -41,6 +41,9 @@ function SideBySidePageContent() {
   const [isStaging1, setIsStaging1] = useState(false);
   const [isStaging2, setIsStaging2] = useState(false);
 
+  const [isBuffering1, setIsBuffering1] = useState(false);
+  const [isBuffering2, setIsBuffering2] = useState(false);
+
   const [selectedVideo1Id, setSelectedVideo1Id] = useState<string | null>(null);
   const [selectedVideo2Id, setSelectedVideo2Id] = useState<string | null>(null);
 
@@ -119,30 +122,16 @@ function SideBySidePageContent() {
 
       if (currentSrc && currentSrc.startsWith('blob:')) URL.revokeObjectURL(currentSrc);
       
-      // Determine if we are on a mobile device based on screen width or user agent
       const isMobile = typeof window !== 'undefined' && (/iPhone|iPad|iPod|Android/i.test(navigator.userAgent) || window.innerWidth < 768);
 
+      // On mobile, the OS blocks preloading. We set isBuffering to true so we can disable the scrubbers
+      // until the user hits play and the OS allows the video to buffer.
       if (isMobile) {
-        // Mobile Strategy: Force download into memory Blob to bypass OS data-saver blocks
-        console.log(`Mobile device detected. Forcing Blob download for Slot ${index}...`);
-        
-        const videoResponse = await fetch(data.url, { signal: abortRef.current.signal });
-        if (!videoResponse.ok) throw new Error('Failed to fetch video blob data');
-        
-        const videoBlob = await videoResponse.blob();
-        
-        if (abortRef.current.signal.aborted) return;
-
-        // On mobile, the GCS proxy defaults to 'application/octet-stream' sometimes. Force it to video/mp4.
-        const forcedMp4Blob = new Blob([videoBlob], { type: 'video/mp4' });
-        const blobUrl = URL.createObjectURL(forcedMp4Blob);
-        
-        setSrc(blobUrl);
-      } else {
-        // Desktop Strategy: Pass signed URL directly for highly-efficient HTTP Range streaming
-        console.log(`Desktop device detected. Streaming directly for Slot ${index}...`);
-        setSrc(data.url);
+        if (index === 1) setIsBuffering1(true);
+        if (index === 2) setIsBuffering2(true);
       }
+
+      setSrc(data.url);
 
     } catch (err: any) {
       if (err.name !== 'AbortError') {
@@ -181,6 +170,11 @@ function SideBySidePageContent() {
     } else if (videoNumber === 2 && video2Ref.current) {
       setDuration2(video2Ref.current.duration);
     }
+  };
+
+  const handleCanPlayThrough = (videoNumber: 1 | 2) => {
+    if (videoNumber === 1) setIsBuffering1(false);
+    if (videoNumber === 2) setIsBuffering2(false);
   };
 
   // Sync Logic: Simple UI Update Loop (No Rubber-Banding)
@@ -364,7 +358,7 @@ function SideBySidePageContent() {
                   </div>
               )}
               {videoSrc1 ? (
-              <video key={videoSrc1} ref={video1Ref} src={videoSrc1} preload="auto" crossOrigin="anonymous" onLoadedMetadata={() => handleLoadedMetadata(1)} onTimeUpdate={() => { if (video1Ref.current && !isPlaying) setCurrentTime1(video1Ref.current.currentTime); }} className="w-full h-full z-10" controls={false} muted playsInline/>
+              <video key={videoSrc1} ref={video1Ref} src={videoSrc1} preload="auto" crossOrigin="anonymous" onLoadedMetadata={() => handleLoadedMetadata(1)} onCanPlayThrough={() => handleCanPlayThrough(1)} onTimeUpdate={() => { if (video1Ref.current && !isPlaying) setCurrentTime1(video1Ref.current.currentTime); }} className="w-full h-full z-10" controls={false} muted playsInline/>
               ) : (
               <p className="text-gray-500">Video Player 1</p>
               )}
@@ -411,7 +405,7 @@ function SideBySidePageContent() {
                   </div>
               )}
               {videoSrc2 ? (
-              <video key={videoSrc2} ref={video2Ref} src={videoSrc2} preload="auto" crossOrigin="anonymous" onLoadedMetadata={() => handleLoadedMetadata(2)} onTimeUpdate={() => { if (video2Ref.current && !isPlaying) setCurrentTime2(video2Ref.current.currentTime); }} className="w-full h-full z-10" controls={false} muted playsInline/>
+              <video key={videoSrc2} ref={video2Ref} src={videoSrc2} preload="auto" crossOrigin="anonymous" onLoadedMetadata={() => handleLoadedMetadata(2)} onCanPlayThrough={() => handleCanPlayThrough(2)} onTimeUpdate={() => { if (video2Ref.current && !isPlaying) setCurrentTime2(video2Ref.current.currentTime); }} className="w-full h-full z-10" controls={false} muted playsInline/>
               ) : (
               <p className="text-gray-500">Video Player 2</p>
               )}
@@ -430,7 +424,14 @@ function SideBySidePageContent() {
         </div>
       </div>
       
-      <div className="w-full max-w-4xl mx-auto my-8 flex flex-col items-center gap-6">
+      <div className={`w-full max-w-4xl mx-auto my-8 flex flex-col items-center gap-6 transition-opacity duration-300 ${(isBuffering1 || isBuffering2) ? 'opacity-50 pointer-events-none' : 'opacity-100'}`}>
+          
+          {(isBuffering1 || isBuffering2) && (
+              <div className="text-orange-400 text-sm font-bold bg-orange-400/10 px-4 py-2 rounded-lg border border-orange-400/30 text-center w-full max-w-md">
+                Buffering video... Scrubbing is locked to prevent crashes. Please wait.
+              </div>
+          )}
+
           <div className="flex flex-wrap justify-center items-center gap-2 md:gap-4">
             {!isPlaying && (
               <>
