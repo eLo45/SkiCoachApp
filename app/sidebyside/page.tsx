@@ -183,57 +183,26 @@ function SideBySidePageContent() {
     }
   };
 
-  // Sync Logic: Dual-Offset Piecewise Synchronization
+  // Sync Logic: Simple UI Update Loop (No Rubber-Banding)
   const syncTime = useCallback(() => {
     if (!video1Ref.current || !video2Ref.current) return;
 
     const v1 = video1Ref.current;
     const v2 = video2Ref.current;
-    
+
     // Check native paused state instead of React state to avoid closure staleness
     if (v1.paused && v2.paused) return;
-    
+
     setCurrentTime1(v1.currentTime);
     setCurrentTime2(v2.currentTime);
 
-    // Determine which sync offset to use
-    let activeOffsetIndex = -1;
-    
-    // Check if both sync points are set and if we've passed the second one
-    if (syncsV1.length >= 2 && syncsV2.length >= 2 && v1.currentTime >= syncsV1[1]) {
-      activeOffsetIndex = 1;
-    } else if (syncsV1.length >= 1 && syncsV2.length >= 1) {
-      activeOffsetIndex = 0;
-    }
-
-    if (activeOffsetIndex !== -1) {
-      const s1 = syncsV1[activeOffsetIndex];
-      const s2 = syncsV2[activeOffsetIndex];
-      
-      const relativeToSync = v1.currentTime - s1;
-      let v2TargetTime = s2 + relativeToSync;
-
-      // Clamp target time to valid video bounds to prevent fatal IndexSizeError crashes
-      v2TargetTime = Math.max(0, Math.min(v2TargetTime, v2.duration || 0));
-
-      // Sync if drift > 0.05s
-      if (Math.abs(video2Ref.current.currentTime - v2TargetTime) > 0.05) {
-        try {
-          video2Ref.current.currentTime = v2TargetTime;
-        } catch (e) {
-          console.warn("Failed to set video time, likely out of bounds:", e);
-        }
-      }
-    }
-    
     if (v1.ended || v2.ended) {
         setIsPlaying(false);
         return;
     }
 
     animationFrameId.current = requestAnimationFrame(syncTime);
-  }, [syncsV1, syncsV2]); // Removed isPlaying from dependency array as we use native paused state now
-
+  }, []); // Removed syncsV1, syncsV2 dependencies as we no longer do math on them here
   const handlePlayPause = () => {
     if (!video1Ref.current || !video2Ref.current) return;
 
