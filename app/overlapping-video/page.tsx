@@ -181,6 +181,9 @@ function OverlappingPageContent() {
     if (!sharedLinkParams) return;
     const {v1, v2, s1, s2} = sharedLinkParams;
 
+    if (v1) handleVideoSelect(v1, 1, 'Shared Video 1');
+    if (v2) handleVideoSelect(v2, 2, 'Shared Video 2');
+
     if (s1) {
       const parsed = s1.split(',').map(Number).filter(n => !isNaN(n));
       setSyncsV1(parsed);
@@ -191,9 +194,6 @@ function OverlappingPageContent() {
       setSyncsV2(parsed);
       if (parsed.length > 0) pendingInitialSeek2.current = parsed[0];
     }
-
-    if (v1) handleVideoSelect(v1, 1, 'Shared Video 1');
-    if (v2) handleVideoSelect(v2, 2, 'Shared Video 2');
     
     setSharedLinkParams(null); // Hide the prompt
   };
