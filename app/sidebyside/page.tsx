@@ -295,6 +295,45 @@ function SideBySidePageContent() {
 
   const [isDrawerOpen, setIsDrawerOpen] = useState(true);
 
+  const [copyLinkText, setCopyLinkText] = useState("Share Link");
+  const hasInitialized = useRef(false);
+
+  useEffect(() => {
+    if (hasInitialized.current) return;
+    hasInitialized.current = true;
+    
+    const params = new URLSearchParams(window.location.search);
+    const v1 = params.get('v1');
+    const v2 = params.get('v2');
+    const s1 = params.get('s1');
+    const s2 = params.get('s2');
+
+    if (v1 || v2) setIsDrawerOpen(false);
+
+    if (v1) handleVideoSelect(v1, 1, 'Shared Video 1');
+    if (v2) handleVideoSelect(v2, 2, 'Shared Video 2');
+
+    if (s1) {
+      setTimeout(() => setSyncsV1(s1.split(',').map(Number).filter(n => !isNaN(n))), 500);
+    }
+    if (s2) {
+      setTimeout(() => setSyncsV2(s2.split(',').map(Number).filter(n => !isNaN(n))), 500);
+    }
+  }, [handleVideoSelect]);
+
+  const handleShareLink = () => {
+    const params = new URLSearchParams();
+    if (selectedVideo1Id) params.set('v1', selectedVideo1Id);
+    if (selectedVideo2Id) params.set('v2', selectedVideo2Id);
+    if (syncsV1.length > 0) params.set('s1', syncsV1.map(n => n.toFixed(2)).join(','));
+    if (syncsV2.length > 0) params.set('s2', syncsV2.map(n => n.toFixed(2)).join(','));
+    
+    const url = `${window.location.origin}${window.location.pathname}?${params.toString()}`;
+    navigator.clipboard.writeText(url);
+    setCopyLinkText("Copied!");
+    setTimeout(() => setCopyLinkText("Share Link"), 2000);
+  };
+
   return (
     <div className="w-full max-w-7xl mx-auto flex flex-col items-center">
       {/* Mobile Landscape Prompt */}
@@ -518,6 +557,17 @@ function SideBySidePageContent() {
           onSeek2={handleManualSeek2}
           onScrubStart={handleScrubStart}
       />
+      
+      <div className="flex justify-center mt-6">
+          <button 
+            onClick={handleShareLink} 
+            disabled={!selectedVideo1Id && !selectedVideo2Id}
+            className="bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-2 px-8 rounded-full shadow-lg transition-all flex items-center gap-2 disabled:opacity-50"
+          >
+            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1"></path></svg>
+            {copyLinkText}
+          </button>
+      </div>
       
       <div className="text-center mt-12 pb-12">
           <Link href="/" className="text-gray-500 hover:text-white transition-colors">
