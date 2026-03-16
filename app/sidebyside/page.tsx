@@ -50,15 +50,24 @@ function SideBySidePageContent() {
   const abortController1Ref = useRef<AbortController | null>(null);
   const abortController2Ref = useRef<AbortController | null>(null);
 
+  const pendingInitialSeek1 = useRef<number | null>(null);
+  const pendingInitialSeek2 = useRef<number | null>(null);
+
   // Cleanup blob URLs on unmount to prevent memory leaks (for local files)
   useEffect(() => {
     return () => {
       if (videoSrc1 && videoSrc1.startsWith('blob:')) URL.revokeObjectURL(videoSrc1);
       if (videoSrc2 && videoSrc2.startsWith('blob:')) URL.revokeObjectURL(videoSrc2);
+    };
+  }, [videoSrc1, videoSrc2]);
+
+  // Cleanup abort controllers only on unmount
+  useEffect(() => {
+    return () => {
       if (abortController1Ref.current) abortController1Ref.current.abort();
       if (abortController2Ref.current) abortController2Ref.current.abort();
     };
-  }, [videoSrc1, videoSrc2]);
+  }, []);
 
   const handleDaySelect = (folderId: string) => {
     setSelectedDayFolderId(folderId);
@@ -185,8 +194,18 @@ function SideBySidePageContent() {
   const handleLoadedMetadata = (videoNumber: 1 | 2) => {
     if (videoNumber === 1 && video1Ref.current) {
       setDuration1(video1Ref.current.duration);
+      if (pendingInitialSeek1.current !== null) {
+        video1Ref.current.currentTime = pendingInitialSeek1.current;
+        setCurrentTime1(pendingInitialSeek1.current);
+        pendingInitialSeek1.current = null;
+      }
     } else if (videoNumber === 2 && video2Ref.current) {
       setDuration2(video2Ref.current.duration);
+      if (pendingInitialSeek2.current !== null) {
+        video2Ref.current.currentTime = pendingInitialSeek2.current;
+        setCurrentTime2(pendingInitialSeek2.current);
+        pendingInitialSeek2.current = null;
+      }
     }
   };
 
@@ -302,6 +321,7 @@ function SideBySidePageContent() {
     if (hasInitialized.current) return;
     hasInitialized.current = true;
     
+    console.log("SEARCH:", window.location.search);
     const params = new URLSearchParams(window.location.search);
     const v1 = params.get('v1');
     const v2 = params.get('v2');
@@ -314,12 +334,16 @@ function SideBySidePageContent() {
     if (v2) handleVideoSelect(v2, 2, 'Shared Video 2');
 
     if (s1) {
-      setTimeout(() => setSyncsV1(s1.split(',').map(Number).filter(n => !isNaN(n))), 500);
+      const parsed = s1.split(',').map(Number).filter(n => !isNaN(n));
+      setTimeout(() => setSyncsV1(parsed), 100);
+      if (parsed.length > 0) pendingInitialSeek1.current = parsed[0];
     }
     if (s2) {
-      setTimeout(() => setSyncsV2(s2.split(',').map(Number).filter(n => !isNaN(n))), 500);
+      const parsed = s2.split(',').map(Number).filter(n => !isNaN(n));
+      setTimeout(() => setSyncsV2(parsed), 100);
+      if (parsed.length > 0) pendingInitialSeek2.current = parsed[0];
     }
-  }, [handleVideoSelect]);
+    }, [handleVideoSelect]);
 
   const handleShareLink = () => {
     const params = new URLSearchParams();
