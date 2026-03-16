@@ -321,7 +321,6 @@ function SideBySidePageContent() {
     if (hasInitialized.current) return;
     hasInitialized.current = true;
     
-    console.log("SEARCH:", window.location.search);
     const params = new URLSearchParams(window.location.search);
     const v1 = params.get('v1');
     const v2 = params.get('v2');
