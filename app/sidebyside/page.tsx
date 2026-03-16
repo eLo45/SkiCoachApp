@@ -179,7 +179,8 @@ function SideBySidePageContent() {
 
   const [isDrawerOpen, setIsDrawerOpen] = useState(true);
   const [copyLinkText, setCopyLinkText] = useState("Share Link");
-  
+  const [sharedLinkParams, setSharedLinkParams] = useState<{v1: string|null, v2: string|null, s1: string|null, s2: string|null} | null>(null);
+
   // URL Initialization
   useEffect(() => {
     const v1 = searchParams.get('v1');
@@ -187,7 +188,15 @@ function SideBySidePageContent() {
     const s1 = searchParams.get('s1');
     const s2 = searchParams.get('s2');
 
-    if (v1 || v2) setIsDrawerOpen(false);
+    if (v1 || v2) {
+        setIsDrawerOpen(false);
+        setSharedLinkParams({v1, v2, s1, s2});
+    }
+  }, [searchParams]);
+
+  const loadSharedAnalysis = () => {
+    if (!sharedLinkParams) return;
+    const {v1, v2, s1, s2} = sharedLinkParams;
 
     if (s1) {
       const parsed = s1.split(',').map(Number).filter(n => !isNaN(n));
@@ -203,8 +212,8 @@ function SideBySidePageContent() {
     if (v1) handleVideoSelect(v1, 1, 'Shared Video 1');
     if (v2) handleVideoSelect(v2, 2, 'Shared Video 2');
     
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [searchParams]); // Depend on searchParams
+    setSharedLinkParams(null); // Hide the prompt
+  };
 
   // Robust Seek Loop
   useEffect(() => {
@@ -386,6 +395,19 @@ function SideBySidePageContent() {
         </div>
       )}
 
+      {sharedLinkParams && (
+        <div className="w-full bg-indigo-900/40 border border-indigo-500/50 p-6 rounded-xl flex flex-col items-center justify-center gap-4 mb-6 shadow-xl">
+          <h2 className="text-xl font-bold text-indigo-100">Shared Analysis Ready</h2>
+          <p className="text-indigo-300 text-sm text-center max-w-md">Click below to download the videos and apply the pre-selected sync points.</p>
+          <button 
+            onClick={loadSharedAnalysis}
+            className="bg-indigo-600 hover:bg-indigo-500 text-white font-bold py-3 px-8 rounded-full shadow-lg transition-transform hover:scale-105 active:scale-95"
+          >
+            Load Shared Videos
+          </button>
+        </div>
+      )}
+
       <div className="flex justify-between items-center mb-4 w-full">
         <h1 className="text-2xl md:text-4xl font-bold text-center w-full">
           Side-by-Side Analysis
@@ -458,7 +480,7 @@ function SideBySidePageContent() {
                   </div>
               )}
               {videoSrc1 ? (
-              <video key={videoSrc1} ref={video1Ref} src={videoSrc1} preload="auto" crossOrigin="anonymous" onLoadedMetadata={() => handleLoadedMetadata(1)} onCanPlayThrough={() => handleCanPlayThrough(1)} onTimeUpdate={() => { if (video1Ref.current && !isPlaying) setCurrentTime1(video1Ref.current.currentTime); }} className="w-full h-full z-10" controls={false} muted playsInline/>
+              <video key={videoSrc1} ref={video1Ref} src={videoSrc1} preload="auto" onLoadedMetadata={() => handleLoadedMetadata(1)} onCanPlayThrough={() => handleCanPlayThrough(1)} onTimeUpdate={() => { if (video1Ref.current && !isPlaying) setCurrentTime1(video1Ref.current.currentTime); }} className="w-full h-full z-10" controls={false} muted playsInline/>
               ) : (
               <p className="text-gray-500">Video Player 1</p>
               )}
@@ -505,7 +527,7 @@ function SideBySidePageContent() {
                   </div>
               )}
               {videoSrc2 ? (
-              <video key={videoSrc2} ref={video2Ref} src={videoSrc2} preload="auto" crossOrigin="anonymous" onLoadedMetadata={() => handleLoadedMetadata(2)} onCanPlayThrough={() => handleCanPlayThrough(2)} onTimeUpdate={() => { if (video2Ref.current && !isPlaying) setCurrentTime2(video2Ref.current.currentTime); }} className="w-full h-full z-10" controls={false} muted playsInline/>
+              <video key={videoSrc2} ref={video2Ref} src={videoSrc2} preload="auto" onLoadedMetadata={() => handleLoadedMetadata(2)} onCanPlayThrough={() => handleCanPlayThrough(2)} onTimeUpdate={() => { if (video2Ref.current && !isPlaying) setCurrentTime2(video2Ref.current.currentTime); }} className="w-full h-full z-10" controls={false} muted playsInline/>
               ) : (
               <p className="text-gray-500">Video Player 2</p>
               )}

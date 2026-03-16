@@ -162,6 +162,7 @@ function OverlappingPageContent() {
 
   const [isDrawerOpen, setIsDrawerOpen] = useState(true);
   const [copyLinkText, setCopyLinkText] = useState("Share Link");
+  const [sharedLinkParams, setSharedLinkParams] = useState<{v1: string|null, v2: string|null, s1: string|null, s2: string|null} | null>(null);
 
   // URL Initialization
   useEffect(() => {
@@ -170,7 +171,15 @@ function OverlappingPageContent() {
     const s1 = searchParams.get('s1');
     const s2 = searchParams.get('s2');
 
-    if (v1 || v2) setIsDrawerOpen(false);
+    if (v1 || v2) {
+        setIsDrawerOpen(false);
+        setSharedLinkParams({v1, v2, s1, s2});
+    }
+  }, [searchParams]);
+
+  const loadSharedAnalysis = () => {
+    if (!sharedLinkParams) return;
+    const {v1, v2, s1, s2} = sharedLinkParams;
 
     if (s1) {
       const parsed = s1.split(',').map(Number).filter(n => !isNaN(n));
@@ -185,8 +194,9 @@ function OverlappingPageContent() {
 
     if (v1) handleVideoSelect(v1, 1, 'Shared Video 1');
     if (v2) handleVideoSelect(v2, 2, 'Shared Video 2');
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [searchParams]);
+    
+    setSharedLinkParams(null); // Hide the prompt
+  };
 
   // Robust Seek Loop
   useEffect(() => {
@@ -356,6 +366,19 @@ function OverlappingPageContent() {
         </div>
       )}
 
+      {sharedLinkParams && (
+        <div className="w-full bg-indigo-900/40 border border-indigo-500/50 p-6 rounded-xl flex flex-col items-center justify-center gap-4 mb-6 shadow-xl">
+          <h2 className="text-xl font-bold text-indigo-100">Shared Analysis Ready</h2>
+          <p className="text-indigo-300 text-sm text-center max-w-md">Click below to download the videos and apply the pre-selected sync points.</p>
+          <button 
+            onClick={loadSharedAnalysis}
+            className="bg-indigo-600 hover:bg-indigo-500 text-white font-bold py-3 px-8 rounded-full shadow-lg transition-transform hover:scale-105 active:scale-95"
+          >
+            Load Shared Videos
+          </button>
+        </div>
+      )}
+
       <button 
         onClick={() => setIsDrawerOpen(!isDrawerOpen)}
         className="md:hidden w-full bg-gray-800 hover:bg-gray-700 text-white font-bold py-3 px-4 rounded-lg border border-gray-600 mb-4 flex justify-between items-center transition-colors"
@@ -415,7 +438,7 @@ function OverlappingPageContent() {
           
           <div className="absolute inset-0 z-10">
             {videoSrc1 ? (
-              <video key={videoSrc1} ref={video1Ref} src={videoSrc1} preload="auto" crossOrigin="anonymous" onLoadedMetadata={() => handleLoadedMetadata(1)} onCanPlayThrough={() => handleCanPlayThrough(1)} className="w-full h-full object-contain" controls={false} muted playsInline/>
+              <video key={videoSrc1} ref={video1Ref} src={videoSrc1} preload="auto" onLoadedMetadata={() => handleLoadedMetadata(1)} onCanPlayThrough={() => handleCanPlayThrough(1)} className="w-full h-full object-contain" controls={false} muted playsInline/>
             ) : (
               <div className="w-full h-full flex items-center justify-center text-gray-600">Video 1 Placeholder</div>
             )}
@@ -423,7 +446,7 @@ function OverlappingPageContent() {
 
           <div className="absolute inset-0 z-20" style={{ opacity: opacity }}>
             {videoSrc2 ? (
-              <video key={videoSrc2} ref={video2Ref} src={videoSrc2} preload="auto" crossOrigin="anonymous" onLoadedMetadata={() => handleLoadedMetadata(2)} onCanPlayThrough={() => handleCanPlayThrough(2)} className="w-full h-full object-contain" controls={false} muted playsInline/>
+              <video key={videoSrc2} ref={video2Ref} src={videoSrc2} preload="auto" onLoadedMetadata={() => handleLoadedMetadata(2)} onCanPlayThrough={() => handleCanPlayThrough(2)} className="w-full h-full object-contain" controls={false} muted playsInline/>
             ) : (
               <div className="w-full h-full flex items-center justify-center text-gray-600 bg-black/20">Video 2 Placeholder</div>
             )}
