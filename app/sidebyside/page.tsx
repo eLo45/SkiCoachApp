@@ -1,12 +1,14 @@
 'use client';
 
-import React, { useState, useRef, ChangeEvent, useEffect, useCallback } from 'react';
+import React, { useState, useRef, ChangeEvent, useEffect, useCallback, Suspense } from 'react';
 import TimelineSync from '@/components/TimelineSync';
 import Link from 'next/link';
 import GoogleDrivePicker from '@/components/GoogleDrivePicker';
 import CalendarView from '@/components/CalendarView';
+import { useSearchParams } from 'next/navigation';
 
 function SideBySidePageContent() {
+  const searchParams = useSearchParams();
   // Video sources
   const [videoSrc1, setVideoSrc1] = useState<string | null>(null);
   const [videoSrc2, setVideoSrc2] = useState<string | null>(null);
@@ -46,6 +48,8 @@ function SideBySidePageContent() {
 
   const [selectedVideo1Id, setSelectedVideo1Id] = useState<string | null>(null);
   const [selectedVideo2Id, setSelectedVideo2Id] = useState<string | null>(null);
+  
+  const [loadError, setLoadError] = useState<string | null>(null);
 
   const abortController1Ref = useRef<AbortController | null>(null);
   const abortController2Ref = useRef<AbortController | null>(null);
@@ -86,6 +90,7 @@ function SideBySidePageContent() {
     setIsVideo2Loaded(false);
     setIsBuffering1(false);
     setIsBuffering2(false);
+    setLoadError(null);
     
     resetSlotState(1);
     resetSlotState(2);
@@ -120,6 +125,7 @@ function SideBySidePageContent() {
     // Always clear the specific slot's playback/sync state when a new video is chosen or deselected
     resetSlotState(index);
     setSelectedVideoId(fileId);
+    setLoadError(null);
 
     // Abort existing downloads for this slot
     if (abortRef.current) {
@@ -158,12 +164,12 @@ function SideBySidePageContent() {
         if (index === 2) setIsBuffering2(true);
       }
 
-      setSrc(data.url);
+      setSrc(data.url + `#t=${index === 1 && pendingInitialSeek1.current !== null ? pendingInitialSeek1.current : (index === 2 && pendingInitialSeek2.current !== null ? pendingInitialSeek2.current : 0)}`);
 
     } catch (err: any) {
       if (err.name !== 'AbortError') {
           console.error('Error fetching video URL:', err);
-          alert(`Failed to load video URL. Please try again. (${err.message})`);
+          setLoadError(`Failed to load video: ${err.message}`);
       }
     } finally {
       setIsStaging(false);
@@ -171,6 +177,69 @@ function SideBySidePageContent() {
     
   }, [videoSrc1, videoSrc2, resetSlotState]);
 
+  const [isDrawerOpen, setIsDrawerOpen] = useState(true);
+  const [copyLinkText, setCopyLinkText] = useState("Share Link");
+  
+  // URL Initialization
+  useEffect(() => {
+    const v1 = searchParams.get('v1');
+    const v2 = searchParams.get('v2');
+    const s1 = searchParams.get('s1');
+    const s2 = searchParams.get('s2');
+
+    if (v1 || v2) setIsDrawerOpen(false);
+
+    if (s1) {
+      const parsed = s1.split(',').map(Number).filter(n => !isNaN(n));
+      setSyncsV1(parsed);
+      if (parsed.length > 0) pendingInitialSeek1.current = parsed[0];
+    }
+    if (s2) {
+      const parsed = s2.split(',').map(Number).filter(n => !isNaN(n));
+      setSyncsV2(parsed);
+      if (parsed.length > 0) pendingInitialSeek2.current = parsed[0];
+    }
+
+    if (v1) handleVideoSelect(v1, 1, 'Shared Video 1');
+    if (v2) handleVideoSelect(v2, 2, 'Shared Video 2');
+    
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [searchParams]); // Depend on searchParams
+
+  // Robust Seek Loop
+  useEffect(() => {
+    const applyInitialSeek = (videoRef: React.RefObject<HTMLVideoElement>, pendingSeek: React.MutableRefObject<number | null>, setTime: (t: number) => void) => {
+      if (videoRef.current && pendingSeek.current !== null && videoRef.current.readyState >= 1) {
+        try {
+          videoRef.current.currentTime = pendingSeek.current;
+          setTime(pendingSeek.current);
+          pendingSeek.current = null;
+        } catch (e) {
+          console.warn("Seek interrupted", e);
+        }
+      }
+    };
+    
+    const interval = setInterval(() => {
+      applyInitialSeek(video1Ref, pendingInitialSeek1, setCurrentTime1);
+      applyInitialSeek(video2Ref, pendingInitialSeek2, setCurrentTime2);
+    }, 200);
+
+    return () => clearInterval(interval);
+  }, []);
+
+  const handleShareLink = () => {
+    const params = new URLSearchParams();
+    if (selectedVideo1Id) params.set('v1', selectedVideo1Id);
+    if (selectedVideo2Id) params.set('v2', selectedVideo2Id);
+    if (syncsV1.length > 0) params.set('s1', syncsV1.map(n => n.toFixed(2)).join(','));
+    if (syncsV2.length > 0) params.set('s2', syncsV2.map(n => n.toFixed(2)).join(','));
+    
+    const url = `${window.location.origin}${window.location.pathname}?${params.toString()}`;
+    navigator.clipboard.writeText(url);
+    setCopyLinkText("Copied!");
+    setTimeout(() => setCopyLinkText("Share Link"), 2000);
+  };
 
   const handleFileChange = (e: ChangeEvent<HTMLInputElement>, videoNumber: 1 | 2) => {
     const file = e.target.files?.[0];
@@ -194,18 +263,8 @@ function SideBySidePageContent() {
   const handleLoadedMetadata = (videoNumber: 1 | 2) => {
     if (videoNumber === 1 && video1Ref.current) {
       setDuration1(video1Ref.current.duration);
-      if (pendingInitialSeek1.current !== null) {
-        video1Ref.current.currentTime = pendingInitialSeek1.current;
-        setCurrentTime1(pendingInitialSeek1.current);
-        pendingInitialSeek1.current = null;
-      }
     } else if (videoNumber === 2 && video2Ref.current) {
       setDuration2(video2Ref.current.duration);
-      if (pendingInitialSeek2.current !== null) {
-        video2Ref.current.currentTime = pendingInitialSeek2.current;
-        setCurrentTime2(pendingInitialSeek2.current);
-        pendingInitialSeek2.current = null;
-      }
     }
   };
 
@@ -233,7 +292,8 @@ function SideBySidePageContent() {
     }
 
     animationFrameId.current = requestAnimationFrame(syncTime);
-  }, []); // Removed syncsV1, syncsV2 dependencies as we no longer do math on them here
+  }, []);
+
   const handlePlayPause = () => {
     if (!video1Ref.current || !video2Ref.current) return;
 
@@ -312,51 +372,6 @@ function SideBySidePageContent() {
     setCurrentTime2(time);
   };
 
-  const [isDrawerOpen, setIsDrawerOpen] = useState(true);
-
-  const [copyLinkText, setCopyLinkText] = useState("Share Link");
-  const hasInitialized = useRef(false);
-
-  useEffect(() => {
-    if (hasInitialized.current) return;
-    hasInitialized.current = true;
-    
-    const params = new URLSearchParams(window.location.search);
-    const v1 = params.get('v1');
-    const v2 = params.get('v2');
-    const s1 = params.get('s1');
-    const s2 = params.get('s2');
-
-    if (v1 || v2) setIsDrawerOpen(false);
-
-    if (v1) handleVideoSelect(v1, 1, 'Shared Video 1');
-    if (v2) handleVideoSelect(v2, 2, 'Shared Video 2');
-
-    if (s1) {
-      const parsed = s1.split(',').map(Number).filter(n => !isNaN(n));
-      setTimeout(() => setSyncsV1(parsed), 100);
-      if (parsed.length > 0) pendingInitialSeek1.current = parsed[0];
-    }
-    if (s2) {
-      const parsed = s2.split(',').map(Number).filter(n => !isNaN(n));
-      setTimeout(() => setSyncsV2(parsed), 100);
-      if (parsed.length > 0) pendingInitialSeek2.current = parsed[0];
-    }
-    }, [handleVideoSelect]);
-
-  const handleShareLink = () => {
-    const params = new URLSearchParams();
-    if (selectedVideo1Id) params.set('v1', selectedVideo1Id);
-    if (selectedVideo2Id) params.set('v2', selectedVideo2Id);
-    if (syncsV1.length > 0) params.set('s1', syncsV1.map(n => n.toFixed(2)).join(','));
-    if (syncsV2.length > 0) params.set('s2', syncsV2.map(n => n.toFixed(2)).join(','));
-    
-    const url = `${window.location.origin}${window.location.pathname}?${params.toString()}`;
-    navigator.clipboard.writeText(url);
-    setCopyLinkText("Copied!");
-    setTimeout(() => setCopyLinkText("Share Link"), 2000);
-  };
-
   return (
     <div className="w-full max-w-7xl mx-auto flex flex-col items-center">
       {/* Mobile Landscape Prompt */}
@@ -364,6 +379,12 @@ function SideBySidePageContent() {
         <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 18h.01M8 21h8a2 2 0 002-2V5a2 2 0 00-2-2H8a2 2 0 00-2 2v14a2 2 0 002 2z"></path></svg>
         Rotate phone to landscape for the best side-by-side experience
       </div>
+
+      {loadError && (
+        <div className="w-full bg-red-900/50 text-red-200 text-sm text-center py-4 px-4 mb-4 rounded-lg border border-red-800">
+          {loadError}
+        </div>
+      )}
 
       <div className="flex justify-between items-center mb-4 w-full">
         <h1 className="text-2xl md:text-4xl font-bold text-center w-full">
@@ -389,7 +410,6 @@ function SideBySidePageContent() {
         <GoogleDrivePicker 
           onVideoSelect={(fileId, index, fileName) => {
             handleVideoSelect(fileId, index, fileName);
-            // Optionally close drawer automatically on mobile if both are selected, but letting user close it is safer.
           }} 
           selectedDayFolderId={selectedDayFolderId} 
           selectedVideo1Id={selectedVideo1Id}
@@ -604,7 +624,9 @@ function SideBySidePageContent() {
 export default function SideBySidePage() {
   return (
     <main className="flex min-h-screen flex-col items-center p-8 bg-black text-white">
-      <SideBySidePageContent />
+      <Suspense fallback={<div className="text-white text-xl">Loading...</div>}>
+        <SideBySidePageContent />
+      </Suspense>
     </main>
   );
 }
